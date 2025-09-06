@@ -1,18 +1,19 @@
 import React from 'react'
 import FilterableFileView from './components/FilterableFileView'
+import electronLogo from './assets/electron.svg'
+import { FileDisplay } from './models/FileDisplay'
 
 // Dummy data for card grid
-const items = Array.from({ length: 18 }, (_, i) => ({
-  id: i + 1,
-  title: `Card Title ${i + 1}`,
-  datetime: new Date(Date.now() - i * 3600_000).toLocaleString(),
-  image: `https://picsum.photos/seed/${i + 1}/300/200`
-}))
+const files: FileDisplay[] = [new FileDisplay('Card Title 1', electronLogo, null),
+  new FileDisplay('Card Title 2', electronLogo, null),
+  new FileDisplay('Card Title 3', electronLogo, null),
+  new FileDisplay('Card Title 4', electronLogo, null)
+]
 
 function App(): React.JSX.Element {
   return (
     <>
-      <FilterableFileView />
+      <FilterableFileView fileInfo={files}/>
     </>
   )
 }

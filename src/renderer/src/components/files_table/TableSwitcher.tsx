@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import PropTypes from 'prop-types';
 
-function TableSwitcher(): React.JSX.Element {
+function TableSwitcher({setRowTableView}): React.JSX.Element {
   return (
     <div className="flex justify-end">
-      <button className="btn btn-ghost">
+       {/* Grid view */}
+      <button className="btn btn-ghost" onClick={() => setRowTableView(true)}>
         <svg
           xmlns="http://www.w3.org/2000/svg"
           viewBox="0 0 24 24"
@@ -18,7 +19,8 @@ function TableSwitcher(): React.JSX.Element {
         </svg>
       </button>
 
-      <button className="btn btn-ghost">
+      {/* Grid view */}
+      <button className="btn btn-ghost" onClick={() => setRowTableView(false)}>
         <svg
           xmlns="http://www.w3.org/2000/svg"
           viewBox="0 0 24 24"
@@ -34,6 +36,10 @@ function TableSwitcher(): React.JSX.Element {
       </button>
     </div>
   )
+}
+
+TableSwitcher.propTypes = {
+  setRowTableView: PropTypes.func.isRequired
 }
 
 export default TableSwitcher
