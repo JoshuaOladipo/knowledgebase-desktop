@@ -1,6 +1,7 @@
-import PropTypes from 'prop-types'
+import { useFiles } from './FileContext'
 
-function RowTable({ files }): React.JSX.Element {
+function RowTable(): React.JSX.Element {
+  const files = useFiles()
   return (
     <div className="overflow-x-auto">
       <table className="table">
@@ -34,17 +35,10 @@ function RowTable({ files }): React.JSX.Element {
                     </div>
                   </div>
                   <div className="font-bold">{item.name}</div>
-
-                  {/* <div>
-                  <div className="font-bold">Hart Hagerty</div>
-                  <div className="text-sm opacity-50">United States</div>
-                </div> */}
                 </div>
               </td>
               <td>
                 This is test data
-                {/* <br />
-              <span className="badge badge-ghost badge-sm">Desktop Support Technician</span> */}
               </td>
               <td>Purple</td>
               <th>
@@ -66,10 +60,6 @@ function RowTable({ files }): React.JSX.Element {
       </table>
     </div>
   )
-}
-
-RowTable.propTypes = {
-  files: PropTypes.arrayOf(PropTypes.object).isRequired
 }
 
 export default RowTable

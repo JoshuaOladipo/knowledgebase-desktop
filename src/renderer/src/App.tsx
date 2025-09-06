@@ -1,5 +1,6 @@
 import React from 'react'
 import FilterableFileView from './components/FilterableFileView'
+import { FilesProvider } from './components/files_table/FileContext'
 import electronLogo from './assets/electron.svg'
 import { FileDisplay } from './models/FileDisplay'
 
@@ -12,9 +13,9 @@ const files: FileDisplay[] = [new FileDisplay('Card Title 1', electronLogo, null
 
 function App(): React.JSX.Element {
   return (
-    <>
-      <FilterableFileView fileInfo={files}/>
-    </>
+    <FilesProvider files={files}>
+      <FilterableFileView />
+    </FilesProvider>
   )
 }
 

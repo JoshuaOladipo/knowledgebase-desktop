@@ -1,6 +1,7 @@
-import PropTypes from 'prop-types'
+import { useFiles } from './FileContext'
 
-function CardTable({ files }): React.JSX.Element {
+function CardTable(): React.JSX.Element {
+  const files = useFiles()
   return (
     <>
       {/* DaisyUI Card Grid */}
@@ -23,10 +24,6 @@ function CardTable({ files }): React.JSX.Element {
       </div>
     </>
   )
-}
-
-CardTable.propTypes = {
-  files: PropTypes.arrayOf(PropTypes.object).isRequired
 }
 
 export default CardTable
