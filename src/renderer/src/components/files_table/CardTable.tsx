@@ -1,28 +1,51 @@
-import { useFiles } from './FileContext'
+import { formatBytes } from '../../fileState'
+import { useFiles } from './useFiles'
 
+/** Renders filtered files as selectable metadata cards. */
 function CardTable(): React.JSX.Element {
-  const files = useFiles()
+  const { filteredFiles, selectedPaths, setDetailsFile, toggleSelected } = useFiles()
   return (
-    <>
-      {/* DaisyUI Card Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 my-8">
-        {files.map((item) => (
-          <div key={item.name} className="card bg-base-100 shadow-xl">
-            <figure>
-              <img
-                src={item.displayImageUrl}
-                alt={item.name}
-                className="w-full h-48 object-cover"
+    <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {filteredFiles.map((file) => (
+        <article
+          className={`card border bg-base-100 ${selectedPaths.has(file.path) ? 'border-primary' : 'border-base-300'}`}
+          key={file.path}
+        >
+          <div className="card-body p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="card-title truncate text-base" title={file.name}>
+                  {file.name}
+                </h3>
+                <p className="truncate text-xs text-base-content/50" title={file.path}>
+                  {file.path}
+                </p>
+              </div>
+              <input
+                aria-label={`Select ${file.name}`}
+                checked={selectedPaths.has(file.path)}
+                className="checkbox checkbox-sm"
+                type="checkbox"
+                onChange={() => toggleSelected(file.path)}
               />
-            </figure>
-            <div className="card-body">
-              <h2 className="card-title">{item.name}</h2>
-              <p className="text-sm text-gray-500">{item.name}</p>
+            </div>
+            <p className="text-sm">
+              {file.isDirectory ? 'Folder' : formatBytes(file.size)} ·{' '}
+              {new Date(file.modifiedAt).toLocaleDateString()}
+            </p>
+            <div className="card-actions justify-end">
+              <button
+                className="btn btn-ghost btn-sm"
+                type="button"
+                onClick={() => setDetailsFile(file)}
+              >
+                Details
+              </button>
             </div>
           </div>
-        ))}
-      </div>
-    </>
+        </article>
+      ))}
+    </div>
   )
 }
 

@@ -1,45 +1,34 @@
-import PropTypes from 'prop-types';
+import type { FileView } from '../../viewState'
 
-function TableSwitcher({setRowTableView}): React.JSX.Element {
+interface TableSwitcherProps {
+  view: FileView
+  setView: (view: FileView) => void
+}
+
+/** Renders accessible controls for switching between list and card layouts. */
+function TableSwitcher({ view, setView }: TableSwitcherProps): React.JSX.Element {
   return (
-    <div className="flex justify-end">
-       {/* Grid view */}
-      <button className="btn btn-ghost" onClick={() => setRowTableView(true)}>
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 24 24"
-          fill="currentColor"
-          className="size-6"
-        >
-          <path
-            fillRule="evenodd"
-            d="M2.625 6.75a1.125 1.125 0 1 1 2.25 0 1.125 1.125 0 0 1-2.25 0Zm4.875 0A.75.75 0 0 1 8.25 6h12a.75.75 0 0 1 0 1.5h-12a.75.75 0 0 1-.75-.75ZM2.625 12a1.125 1.125 0 1 1 2.25 0 1.125 1.125 0 0 1-2.25 0ZM7.5 12a.75.75 0 0 1 .75-.75h12a.75.75 0 0 1 0 1.5h-12A.75.75 0 0 1 7.5 12Zm-4.875 5.25a1.125 1.125 0 1 1 2.25 0 1.125 1.125 0 0 1-2.25 0Zm4.875 0a.75.75 0 0 1 .75-.75h12a.75.75 0 0 1 0 1.5h-12a.75.75 0 0 1-.75-.75Z"
-            clipRule="evenodd"
-          />
-        </svg>
+    <div className="join" aria-label="File view" role="group">
+      <button
+        className={`btn join-item ${view === 'list' ? 'btn-active' : ''}`}
+        type="button"
+        aria-label="List view"
+        aria-pressed={view === 'list'}
+        onClick={() => setView('list')}
+      >
+        List
       </button>
-
-      {/* Grid view */}
-      <button className="btn btn-ghost" onClick={() => setRowTableView(false)}>
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 24 24"
-          fill="currentColor"
-          className="size-6"
-        >
-          <path
-            fillRule="evenodd"
-            d="M3 6a3 3 0 0 1 3-3h2.25a3 3 0 0 1 3 3v2.25a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V6Zm9.75 0a3 3 0 0 1 3-3H18a3 3 0 0 1 3 3v2.25a3 3 0 0 1-3 3h-2.25a3 3 0 0 1-3-3V6ZM3 15.75a3 3 0 0 1 3-3h2.25a3 3 0 0 1 3 3V18a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3v-2.25Zm9.75 0a3 3 0 0 1 3-3H18a3 3 0 0 1 3 3V18a3 3 0 0 1-3 3h-2.25a3 3 0 0 1-3-3v-2.25Z"
-            clipRule="evenodd"
-          />
-        </svg>
+      <button
+        className={`btn join-item ${view === 'cards' ? 'btn-active' : ''}`}
+        type="button"
+        aria-label="Card view"
+        aria-pressed={view === 'cards'}
+        onClick={() => setView('cards')}
+      >
+        Cards
       </button>
     </div>
   )
-}
-
-TableSwitcher.propTypes = {
-  setRowTableView: PropTypes.func.isRequired
 }
 
 export default TableSwitcher

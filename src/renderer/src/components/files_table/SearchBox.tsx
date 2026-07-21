@@ -1,11 +1,19 @@
-import { useState } from 'react'
+import { useFiles } from './useFiles'
 
+/** Renders the controlled search input used to filter file names and paths. */
 function SearchBox(): React.JSX.Element {
+  const { query, setQuery } = useFiles()
   return (
-    <div className="flex justify-center items-center gap-2 my-4">
-      <input type="text" placeholder="Search…" className="input input-bordered w-full max-w-xs" />
-      <button className="btn btn-primary">Search</button>
-    </div>
+    <label className="input input-bordered flex items-center gap-2">
+      <span className="sr-only">Search files</span>
+      <input
+        className="grow"
+        type="search"
+        placeholder="Search files…"
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+      />
+    </label>
   )
 }
 

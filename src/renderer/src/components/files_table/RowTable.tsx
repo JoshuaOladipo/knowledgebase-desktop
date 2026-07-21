@@ -1,62 +1,69 @@
-import { useFiles } from './FileContext'
+import { formatBytes } from '../../fileState'
+import { useFiles } from './useFiles'
 
+/** Renders filtered files as an accessible selectable metadata table. */
 function RowTable(): React.JSX.Element {
-  const files = useFiles()
+  const { filteredFiles, selectedPaths, setDetailsFile, toggleAll, toggleSelected } = useFiles()
+  const allSelected = filteredFiles.every((file) => selectedPaths.has(file.path))
+
   return (
-    <div className="overflow-x-auto">
-      <table className="table">
-        {/* head */}
+    <div className="mt-4 overflow-x-auto">
+      <table className="table table-zebra">
         <thead>
           <tr>
             <th>
-              <label>
-                <input type="checkbox" className="checkbox" />
-              </label>
+              <input
+                aria-label="Select all visible files"
+                checked={allSelected}
+                className="checkbox checkbox-sm"
+                type="checkbox"
+                onChange={toggleAll}
+              />
             </th>
             <th>Name</th>
-            <th>Job</th>
-            <th>Favorite Color</th>
-            <th></th>
+            <th>Type</th>
+            <th>Size</th>
+            <th>Modified</th>
+            <th>
+              <span className="sr-only">Actions</span>
+            </th>
           </tr>
         </thead>
         <tbody>
-          {files.map((item) => (
-            <tr key={item.name}>
-              <th>
-                <label>
-                  <input type="checkbox" className="checkbox" />
-                </label>
-              </th>
+          {filteredFiles.map((file) => (
+            <tr key={file.path}>
               <td>
-                <div className="flex items-center gap-3">
-                  <div className="avatar">
-                    <div className="mask mask-squircle h-12 w-12">
-                      <img src={item.displayImageUrl} alt={item.name} />
-                    </div>
+                <input
+                  aria-label={`Select ${file.name}`}
+                  checked={selectedPaths.has(file.path)}
+                  className="checkbox checkbox-sm"
+                  type="checkbox"
+                  onChange={() => toggleSelected(file.path)}
+                />
+              </td>
+              <td>
+                <div className="max-w-md">
+                  <div className="font-semibold">{file.name}</div>
+                  <div className="truncate text-xs text-base-content/50" title={file.path}>
+                    {file.path}
                   </div>
-                  <div className="font-bold">{item.name}</div>
                 </div>
               </td>
+              <td>{file.isDirectory ? 'Folder' : 'File'}</td>
+              <td>{file.isDirectory ? '—' : formatBytes(file.size)}</td>
+              <td>{new Date(file.modifiedAt).toLocaleString()}</td>
               <td>
-                This is test data
+                <button
+                  className="btn btn-ghost btn-xs"
+                  type="button"
+                  onClick={() => setDetailsFile(file)}
+                >
+                  Details
+                </button>
               </td>
-              <td>Purple</td>
-              <th>
-                <button className="btn btn-ghost btn-xs">details</button>
-              </th>
             </tr>
           ))}
         </tbody>
-        {/* foot */}
-        <tfoot>
-          <tr>
-            <th></th>
-            <th>Name</th>
-            <th>Job</th>
-            <th>Favorite Color</th>
-            <th></th>
-          </tr>
-        </tfoot>
       </table>
     </div>
   )

@@ -1,98 +1,158 @@
-import { app, shell, BrowserWindow, ipcMain, nativeImage, Tray, Menu } from 'electron'
-import { join } from 'path'
-import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import { readFile, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, shell, Tray } from 'electron'
+import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import watchFolders from './watcher'
+import { ipcChannels } from '../shared/contracts'
+import { WatcherService } from './watcher'
 
-function createWindow(): void {
-  // Create the browser window.
+let tray: Tray | null = null
+let watcherService: WatcherService
+
+/** Sends an event payload to every open renderer window. */
+function broadcast(channel: string, payload: unknown): void {
+  for (const window of BrowserWindow.getAllWindows()) window.webContents.send(channel, payload)
+}
+
+/** Resolves the per-user settings file managed by the main process. */
+function settingsPath(): string {
+  return join(app.getPath('userData'), 'settings.json')
+}
+
+/** Loads saved folders, falling back to an empty list for invalid settings. */
+async function loadSavedFolders(): Promise<string[]> {
+  try {
+    const settings = JSON.parse(await readFile(settingsPath(), 'utf8')) as {
+      watchedFolders?: unknown
+    }
+    return Array.isArray(settings.watchedFolders)
+      ? settings.watchedFolders.filter((value): value is string => typeof value === 'string')
+      : []
+  } catch {
+    return []
+  }
+}
+
+/** Persists the active folder list in Electron's user-data directory. */
+async function saveFolders(folders: string[]): Promise<void> {
+  await writeFile(settingsPath(), JSON.stringify({ watchedFolders: folders }, null, 2), 'utf8')
+}
+
+/** Creates and configures the sandboxed application browser window. */
+function createWindow(): BrowserWindow {
   const mainWindow = new BrowserWindow({
-    width: 900,
-    height: 670,
+    width: 1100,
+    height: 760,
+    minWidth: 720,
+    minHeight: 520,
     show: false,
     autoHideMenuBar: true,
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true
     }
   })
 
-  mainWindow.on('ready-to-show', () => {
-    mainWindow.show()
-  })
-
-  mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
+  mainWindow.on('ready-to-show', () => mainWindow.show())
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    try {
+      const protocol = new URL(url).protocol
+      if (protocol === 'https:' || protocol === 'http:') void shell.openExternal(url)
+    } catch {
+      // Invalid and non-web URLs stay inside the application boundary.
+    }
     return { action: 'deny' }
   })
 
-  // HMR for renderer base on electron-vite cli.
-  // Load the remote URL for development or the local html file for production.
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
+    void mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    void mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
+
+  return mainWindow
 }
 
-// save a reference to the Tray object globally to avoid garbage collection
-let tray: Tray | null = null
-const trayicon = nativeImage.createFromPath(icon)
+/** Registers the IPC handlers exposed through the preload bridge. */
+function registerIpcHandlers(): void {
+  ipcMain.handle(ipcChannels.selectFolders, async () => {
+    const result = await dialog.showOpenDialog({
+      title: 'Choose folders to watch',
+      properties: ['openDirectory', 'multiSelections']
+    })
+    return result.canceled ? [] : result.filePaths
+  })
+  ipcMain.handle(ipcChannels.startWatching, async (_event, folders: string[]) => {
+    const state = await watcherService.start(folders)
+    await saveFolders(state.folders)
+    return state
+  })
+  ipcMain.handle(ipcChannels.stopWatching, async () => {
+    const state = await watcherService.stop()
+    await saveFolders([])
+    return state
+  })
+  ipcMain.handle(ipcChannels.getWatcherState, () => watcherService.getState())
+  ipcMain.handle(ipcChannels.getWatchedFiles, () => watcherService.getFiles())
+}
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
-app.whenReady().then(() => {
-  // Set app user model id for windows
-  electronApp.setAppUserModelId('com.electron')
+app.whenReady().then(async () => {
+  electronApp.setAppUserModelId('com.joshuaoladipo.pc-agent')
+  app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window))
 
-  // Default open or close DevTools by F12 in development
-  // and ignore CommandOrControl + R in production.
-  // see https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
-  app.on('browser-window-created', (_, window) => {
-    optimizer.watchWindowShortcuts(window)
+  watcherService = new WatcherService(
+    (event) => broadcast(ipcChannels.fileEvent, event),
+    (state) => broadcast(ipcChannels.watcherState, state)
+  )
+  registerIpcHandlers()
+  const mainWindow = createWindow()
+
+  await new Promise<void>((resolve) => {
+    if (mainWindow.webContents.isLoading()) mainWindow.webContents.once('did-finish-load', resolve)
+    else resolve()
   })
 
-  // IPC test
-  ipcMain.on('ping', () => console.log('pong'))
-  ipcMain.handle('watch-folders', watchFolders)
+  const savedFolders = await loadSavedFolders()
+  if (savedFolders.length > 0) {
+    try {
+      await watcherService.start(savedFolders)
+    } catch (error) {
+      broadcast(ipcChannels.watcherState, {
+        folders: savedFolders,
+        phase: 'error',
+        error: `Could not restore watched folders: ${String(error)}`
+      })
+    }
+  }
 
-  createWindow()
-
-  app.on('activate', function () {
-    // On macOS it's common to re-create a window in the app when the
-    // dock icon is clicked and there are no other windows open.
+  app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 
-  tray = new Tray(trayicon.resize({ width: 16 }))
-  const contextMenu = Menu.buildFromTemplate([
-    {
-      label: 'Open App',
-      click: () => {
-        const wins = BrowserWindow.getAllWindows()
-        if (wins.length === 0) {
-          createWindow()
-        } else {
-          wins[0].focus()
+  tray = new Tray(nativeImage.createFromPath(icon).resize({ width: 16, height: 16 }))
+  tray.setToolTip('PC Agent')
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      {
+        label: 'Open PC Agent',
+        click: () => {
+          const window = BrowserWindow.getAllWindows()[0] ?? createWindow()
+          window.show()
+          window.focus()
         }
-      }
-    },
-    { role: 'quit' }
-  ])
-
-  tray.setContextMenu(contextMenu)
+      },
+      { role: 'quit' }
+    ])
+  )
 })
 
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
+app.on('before-quit', () => {
+  if (watcherService) void watcherService.stop()
+})
+
 app.on('window-all-closed', () => {
-  // if (process.platform !== 'darwin') {
-  //   app.quit()
-  // }
+  // The tray keeps PC Agent running until the user explicitly quits.
 })
-
-// In this file you can include the rest of your app's specific main process
-// code. You can also put them in separate files and require them here.
