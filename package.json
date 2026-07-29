@@ -28,6 +28,7 @@
   "dependencies": {
     "@electron-toolkit/utils": "^4.0.0",
     "@tailwindcss/vite": "^4.3.2",
+    "@tursodatabase/database": "^0.7.1",
     "chokidar": "^5.0.0",
     "tailwindcss": "^4.3.2"
   },
