@@ -1,0 +1,18 @@
+framework:
+  version: "0.1.0"
+  managed_directory: ".agentic"
+architecture:
+  contract: "architecture/CONTRACT.yaml"
+  decisions: "architecture/decisions"
+tasks:
+  active: "tasks/active"
+  completed: "tasks/completed"
+  require_acceptance_criteria: true
+  require_code_references: true
+  require_line_references: true
+policies:
+  architecture_changes: "approval_required"
+  planning_implies_implementation: false
+verification:
+  require_tests_for_behavior_changes: true
+  prohibit_unverified_success_claims: true

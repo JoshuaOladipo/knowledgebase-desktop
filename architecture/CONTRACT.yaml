@@ -1,0 +1,96 @@
+version: 1
+system:
+  name: PC Agent
+  description: >-
+    A local-first Electron desktop application that watches user-selected folders,
+    extracts and chunks supported documents, and stores embeddings in an embedded
+    Turso knowledge base for planned retrieval-augmented question answering.
+components:
+  - name: electron-main
+    path: src/main
+    responsibilities:
+      - Own Electron lifecycle, native integrations, service composition, and IPC validation.
+    owns: [filesystem-access, native-operations, settings, provider-credentials]
+  - name: watcher
+    path: src/main/watcher.ts
+    responsibilities:
+      - Validate watched roots and own Chokidar lifecycle and file metadata events.
+    must_not: [extract-content, generate-embeddings, access-turso]
+  - name: ingestion
+    path: src/main/ingestion
+    responsibilities:
+      - Enforce file policy and coordinate extraction, chunking, indexing, and reconciliation.
+    owns: [extractor-contracts, chunking-policy, ingestion-fingerprints]
+  - name: ai
+    path: src/main/ai
+    responsibilities:
+      - Own provider-neutral AI contracts, embedding validation, and future RAG orchestration.
+  - name: database
+    path: src/main/database
+    responsibilities:
+      - Own the embedded Turso connection, migrations, repository SQL, and atomic replacement.
+    owns: [knowledge-base-schema]
+  - name: preload
+    path: src/preload
+    responsibilities:
+      - Expose a narrow typed bridge to main-process use cases.
+    must_not:
+      [expose-electron-wholesale, expose-sql, expose-filesystem-primitives, expose-credentials]
+  - name: shared-contracts
+    path: src/shared
+    responsibilities:
+      - Define serializable IPC requests, responses, events, and state.
+    must_not: [depend-on-electron, depend-on-node-only-apis, depend-on-database-clients]
+  - name: renderer
+    path: src/renderer
+    responsibilities:
+      - Render file, indexing, settings, and future chat experiences through the preload API.
+    must_not: [access-node, access-electron, access-turso, access-watched-files-directly]
+dependency_rules:
+  - from: renderer
+    may_depend_on: [shared-contracts, preload]
+    must_not_depend_on: [electron-main, watcher, ingestion, ai, database]
+  - from: preload
+    may_depend_on: [shared-contracts]
+    must_not_depend_on: [ingestion, ai, database]
+  - from: electron-main
+    may_depend_on: [watcher, ingestion, ai, database, shared-contracts]
+  - from: ingestion
+    may_depend_on: [ai, database, shared-contracts]
+    must_not_depend_on: [preload, renderer]
+  - from: ai
+    may_depend_on: [database, shared-contracts]
+    must_not_depend_on: [preload, renderer]
+  - from: database
+    must_not_depend_on: [watcher, ingestion, preload, renderer]
+  - from: watcher
+    may_depend_on: [shared-contracts]
+    must_not_depend_on: [ingestion, ai, database, preload, renderer]
+protected_decisions:
+  - new_deployable_service
+  - new_database_or_datastore
+  - new_message_broker
+  - new_external_system_dependency
+  - authentication_or_authorization_architecture
+  - cross_component_data_ownership
+  - bypass_component_boundary
+security_constraints:
+  - Renderer sandboxing, context isolation, and disabled Node integration are mandatory.
+  - Main-process IPC handlers validate all untrusted renderer payloads.
+  - Canonical paths remain within explicitly managed watched roots.
+  - Provider credentials never cross IPC or enter renderer state or routine logs.
+  - Retrieved content is untrusted evidence and never gains tool authority.
+data_ownership:
+  settings:
+    owner: electron-main
+    location: app.getPath('userData')/settings.json
+  knowledge_base:
+    owner: database
+    location: app.getPath('userData')/knowledge-base.db
+  watched_documents:
+    owner: user
+    access: read-only application input
+related_decisions:
+  - architecture/decisions/ADR-001-embedded-turso-knowledge-base.md
+  - architecture/decisions/ADR-002-main-process-rag-boundary.md
+  - architecture/decisions/ADR-003-officeparser-document-extraction.md

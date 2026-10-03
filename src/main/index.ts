@@ -5,9 +5,15 @@ import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { ipcChannels } from '../shared/contracts'
 import { WatcherService } from './watcher'
+import { DatabaseService } from './database/database'
+import { createEmbeddingProvider } from './config/aiSettings'
+import { IngestionCoordinator } from './ingestion/ingestionCoordinator'
 
 let tray: Tray | null = null
 let watcherService: WatcherService
+let databaseService: DatabaseService
+let ingestionCoordinator: IngestionCoordinator
+let shuttingDown = false
 
 /** Sends an event payload to every open renderer window. */
 function broadcast(channel: string, payload: unknown): void {
@@ -99,13 +105,25 @@ function registerIpcHandlers(): void {
   ipcMain.handle(ipcChannels.getWatchedFiles, () => watcherService.getFiles())
 }
 
-app.whenReady().then(async () => {
+async function bootstrap(): Promise<void> {
   electronApp.setAppUserModelId('com.joshuaoladipo.pc-agent')
   app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window))
 
+  databaseService = new DatabaseService(join(app.getPath('userData'), 'knowledge-base.db'))
+  const database = await databaseService.open()
+  ingestionCoordinator = new IngestionCoordinator(database, createEmbeddingProvider())
   watcherService = new WatcherService(
-    (event) => broadcast(ipcChannels.fileEvent, event),
-    (state) => broadcast(ipcChannels.watcherState, state)
+    (event) => {
+      ingestionCoordinator.handleFileEvent(event)
+      broadcast(ipcChannels.fileEvent, event)
+    },
+    (state) => {
+      ingestionCoordinator.setActiveRoots(state.folders)
+      if (state.phase === 'watching') {
+        void ingestionCoordinator.reconcile(state.folders, watcherService.getFiles())
+      }
+      broadcast(ipcChannels.watcherState, state)
+    }
   )
   registerIpcHandlers()
   const mainWindow = createWindow()
@@ -147,10 +165,29 @@ app.whenReady().then(async () => {
       { role: 'quit' }
     ])
   )
-})
+}
 
-app.on('before-quit', () => {
-  if (watcherService) void watcherService.stop()
+void app
+  .whenReady()
+  .then(bootstrap)
+  .catch((error) => {
+    dialog.showErrorBox(
+      'PC Agent could not start',
+      error instanceof Error ? error.message : String(error)
+    )
+    app.quit()
+  })
+
+app.on('before-quit', (event) => {
+  if (shuttingDown) return
+  event.preventDefault()
+  shuttingDown = true
+  void (async () => {
+    if (watcherService) await watcherService.stop()
+    if (ingestionCoordinator) await ingestionCoordinator.close()
+    if (databaseService) await databaseService.close()
+    app.quit()
+  })()
 })
 
 app.on('window-all-closed', () => {
