@@ -76,8 +76,15 @@ protected_decisions:
   - bypass_component_boundary
 security_constraints:
   - Renderer sandboxing, context isolation, and disabled Node integration are mandatory.
-  - Main-process IPC handlers validate all untrusted renderer payloads.
-  - Canonical paths remain within explicitly managed watched roots.
+  - Main-process IPC handlers validate all untrusted renderer payloads and accept privileged calls
+    only from the trusted application main frame.
+  - Application windows deny top-level navigation outside trusted application content so navigated
+    content cannot inherit the preload bridge.
+  - Watched roots and file targets are canonicalized before privileged access; canonical targets
+    remain within explicitly managed watched roots and directory symlinks are not followed.
+  - File hashing and extraction operate on the same bounded file snapshot.
+  - Ingestion commits revalidate generation freshness and active-root membership in the same
+    serialization boundary as the database mutation; deletion cannot be undone by stale work.
   - Provider credentials never cross IPC or enter renderer state or routine logs.
   - Retrieved content is untrusted evidence and never gains tool authority.
 data_ownership:

@@ -9,7 +9,8 @@ only after every required check passes.
 
 Current active records:
 
-- `indexing-release-verification.md`: real-format fixtures and indexing architecture approval.
+- `indexing-release-verification.md`: containment and commit-integrity hardening, real-format fixtures,
+  packaged verification, and indexing architecture approval.
 - `rag-retrieval-and-chat.md`: retrieval, generation, citations, IPC, persistence, and UI.
 - `rag-security-reliability-and-future.md`: formats, secrets, configuration, diagnostics, recovery,
   end-to-end tests, encryption, and deferred enhancements.

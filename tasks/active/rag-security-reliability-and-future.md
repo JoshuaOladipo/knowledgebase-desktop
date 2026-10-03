@@ -168,12 +168,17 @@ Prove that failures cannot commit partial or stale document state.
 Dependencies:
 
 - Stable indexing and RAG orchestration contracts.
+- IDX-004 and IDX-005 from `tasks/active/indexing-release-verification.md`.
 
 Acceptance criteria:
 
 - [ ] Test interruption during extraction, embedding, document replacement, migration, and shutdown.
 - [ ] Test restart reconciliation after files change while the application is closed.
 - [ ] Test cancellation from deletion, folder removal, reconfiguration, newer generations, and quit.
+- [ ] Test a successful empty/non-indexable replacement clears prior chunks and cannot later be marked
+      indexed through the unchanged-content fast path.
+- [ ] Test stale generations cannot commit after a newer change, deletion, or active-root removal.
+- [ ] Test reconciliation waits for a complete watcher snapshot before deleting durable records.
 - [ ] Verify previous valid chunks survive failed replacement.
 - [ ] Verify shutdown drains or aborts provider work and closes Turso cleanly.
 
@@ -187,7 +192,9 @@ Architecture impact:
 
 Implementation:
 
-- Graceful shutdown and generation checks exist, but complete recovery coverage does not.
+- Graceful shutdown and pre-commit generation checks exist, but freshness is not validated inside the
+  replacement transaction, deletion is not serialized with pending writes, and successful zero-chunk
+  replacement does not clear prior chunks.
 
 Tests:
 
@@ -195,11 +202,12 @@ Tests:
 
 Verification:
 
-- Not run.
+- Static review on 2026-10-03 identified the commit-window and zero-chunk consistency defects. Existing
+  tests do not cover these scenarios.
 
 Commit:
 
-- Not available.
+- Defects observed at `2db71a3`; no fix implemented.
 
 ### RAGX-005 — Add complete end-to-end RAG verification
 
@@ -336,13 +344,18 @@ Commit:
 ## Decisions / blockers
 
 - Cloud provider, encryption, telemetry, and synchronization choices require product/security input.
+- IDX-004 and IDX-005 must establish canonical containment and commit integrity before retrieval trusts
+  indexed chunks.
 - Retrieval enhancements require representative benchmarks rather than assumptions.
 
 ## Handoff
 
-- Authorized: Documentation migration only.
-- Implemented: Durable task coverage for previously untransitioned RAG work.
-- Verified: No application behavior verification claimed.
+- Authorized: Update relevant task and architecture documentation from the 2026-10-03 codebase audit.
+- Implemented: Expanded RAGX-004 with the verified zero-chunk, stale-generation, deletion, and
+  reconciliation recovery scenarios. No application behavior changed.
+- Verified: Static audit evidence is recorded under IDX-004 and IDX-005; the existing 24 tests pass but
+  do not cover the newly recorded scenarios.
 - Remaining: RAGX-001 through RAGX-007.
-- Risks/blockers: Privacy decisions, credential storage, representative evaluation data, packaging.
-- Next action: Complete core retrieval/chat before authorizing deferred enhancements.
+- Risks/blockers: Index containment and integrity, privacy decisions, credential storage,
+  representative evaluation data, and packaging.
+- Next action: Complete IDX-004 and IDX-005 before core retrieval/chat relies on the index.

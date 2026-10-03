@@ -66,15 +66,22 @@ Implementation:
 
 Tests:
 
-- Full clean-checkout verification remains pending.
+- On 2026-10-03, the existing checkout passed lint, both typechecks, 24 tests, and the production
+  build. This does not replace clean-checkout verification.
 
 Verification:
 
-- Documentation-only checks do not satisfy this task.
+- `pnpm install --frozen-lockfile --offline` completed against the existing install but reported an
+  ignored `tesseract.js@7.0.0` build-script warning.
+- `pnpm exec prettier --check .` failed on `.agentic/AGENTS.md`,
+  `.agentic/templates/feature-task.md`, and `agentic.yaml`; the current CI workflow therefore does not
+  pass as committed.
+- `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`, and
+  `python3 .agentic/scripts/validate_project.py` passed.
 
 Commit:
 
-- Not available.
+- Results observed at `2db71a3`; no hardening fix implemented.
 
 ### HARD-002 — Harden watcher and renderer error handling
 
@@ -123,7 +130,7 @@ Commit:
 
 - Not available.
 
-### HARD-003 — Strengthen existing watcher IPC validation
+### HARD-003 — Strengthen IPC and renderer trust-boundary validation
 
 Status: Pending
 
@@ -132,7 +139,8 @@ Prevent malformed or unauthorized renderer input from reaching native folder and
 
 Dependencies:
 
-- A documented sender/frame/origin policy.
+- The trusted main-frame and navigation policy documented in `architecture/CONTRACT.yaml` and
+  `docs/security.md`.
 
 Acceptance criteria:
 
@@ -140,10 +148,15 @@ Acceptance criteria:
 - [ ] Reject non-array folder arguments, empty paths, unknown fields, and malformed values clearly.
 - [ ] Define and document sender-frame and origin validation.
 - [ ] Apply sender validation consistently to privileged handlers.
+- [ ] Deny top-level navigation outside trusted application content so remote pages cannot inherit the
+      preload bridge.
+- [ ] Keep HTTP/HTTPS external-link opening separate from renderer navigation and reject other URL
+      schemes.
 - [ ] Keep path canonicalization and directory checks in the main process.
 - [ ] Separate handler registration from bootstrap sufficiently for isolated tests.
 - [ ] Test folder selection, watcher start/replace/stop, state, snapshot, malformed input, sender policy,
       settings persistence/restoration, and invalid/inaccessible saved folders.
+- [ ] Test top-level navigation, new-window denial, allowed external links, and rejected URL schemes.
 
 Expected verification:
 
@@ -155,7 +168,8 @@ Architecture impact:
 
 Implementation:
 
-- Existing typed channels are present, but centralized runtime and sender validation are incomplete.
+- Existing typed channels and new-window denial are present, but centralized runtime/sender validation
+  and top-level navigation denial are incomplete at `src/main/index.ts:47-106`.
 
 Tests:
 
@@ -163,11 +177,12 @@ Tests:
 
 Verification:
 
-- Not run.
+- Static review on 2026-10-03 confirmed that `ipcMain.handle` callbacks do not check the sender frame
+  and `createWindow` does not register a top-level navigation policy.
 
 Commit:
 
-- Not available.
+- Defects observed at `2db71a3`; no fix implemented.
 
 ### HARD-004 — Reconcile renderer selection and details state
 
@@ -263,14 +278,22 @@ Commit:
 
 ## Decisions / blockers
 
-- IPC sender/origin policy requires a deliberate security decision.
+- IPC sender/origin and navigation enforcement must implement the documented trusted main-frame
+  policy.
+- Repository-wide Prettier currently fails on three tracked framework/configuration files.
+- pnpm reports an intentionally ignored transitive `tesseract.js` build script; the policy and warning
+  need a documented resolution.
 - Platform claims depend on clean-machine packaged application verification.
 
 ## Handoff
 
-- Authorized: Planning/documentation migration only.
-- Implemented: Durable task coverage for the full non-RAG backlog.
-- Verified: No application behavior verification claimed.
+- Authorized: Update relevant task and architecture documentation from the 2026-10-03 codebase audit.
+- Implemented: Added current verification evidence to HARD-001 and expanded HARD-003 to cover sender
+  validation and top-level navigation. No application behavior changed.
+- Verified: Lint, typecheck, 24 tests, production build, and project validation passed; repository-wide
+  Prettier failed and clean-checkout/package verification remains incomplete.
 - Remaining: HARD-001 through HARD-005 unchecked criteria.
-- Risks/blockers: IPC sender policy, clean-checkout reproducibility, native package verification.
-- Next action: Authorize HARD-001 or HARD-002 as a bounded implementation task.
+- Risks/blockers: IPC sender/navigation policy, renderer and watcher error recovery, formatting failure,
+  clean-checkout reproducibility, and native package verification.
+- Next action: Fix HARD-001's deterministic CI failures, then authorize HARD-003 as a bounded security
+  task.

@@ -13,7 +13,8 @@ ingestion extractor contract. This external dependency is a protected decision.
 Use the pinned OfficeParser package only in the main process. Wrap it in an application-owned,
 asynchronous adapter with cancellation, archive limits, sanitized warnings, and generalized source
 metadata. Keep OCR, attachments, raw content, comments, notes, headers, footers, and slide masters
-disabled initially.
+disabled initially. Hash and parse the same bounded byte snapshot instead of reopening the source path
+after policy validation.
 
 ## Alternatives considered
 
@@ -24,6 +25,7 @@ disabled initially.
 ## Consequences
 
 - Resource limits and cancellation are security requirements.
+- Snapshot-based parsing is required to prevent path-swap and fingerprint/content inconsistencies.
 - Real-format fixtures and packaged application verification are required before complete support is
   claimed.
 - Parser configuration forms part of the ingestion fingerprint.

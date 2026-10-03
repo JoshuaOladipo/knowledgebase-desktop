@@ -74,7 +74,9 @@ and closes services during shutdown.
 ### Watcher
 
 `src/main/watcher.ts` validates roots, owns one Chokidar watcher, maintains a metadata snapshot, and
-emits serializable add/change/unlink events. It does not parse documents or access Turso.
+emits serializable add/change/unlink events. It does not parse documents or access Turso. Root paths
+are canonicalized, but descendant event paths are not yet canonicalized and Chokidar currently follows
+directory symlinks by default; IDX-004 tracks the required containment fix.
 
 ### Database
 
@@ -92,12 +94,13 @@ implemented.
 ### Ingestion
 
 `src/main/ingestion/` owns file classification, extraction, chunking, fingerprints, the bounded queue,
-and restart reconciliation. Work is keyed by canonical path; a newer generation cancels and supersedes
-older work.
+and restart reconciliation. Work is keyed by the watcher event path; a newer generation aborts older
+work, but generation freshness is not yet enforced inside the database commit boundary.
 
-The file policy currently rejects symlinks, non-files, ignored directories, unsupported extensions,
-unreadable files, invalid UTF-8 text, and input files over 10 MB. OfficeParser additionally applies
-archive and spreadsheet resource limits.
+The file policy currently rejects a symlink in the final path component, non-files, ignored
+directories, unsupported extensions, unreadable files, invalid UTF-8 text, and input files over 10 MB.
+It does not yet prevent traversal through an intermediate directory symlink or a path swap between
+validation and extraction. OfficeParser additionally applies archive and spreadsheet resource limits.
 
 ### Embeddings
 
@@ -106,11 +109,11 @@ and retries classified transient failures. The current `LocalHashEmbeddingProvid
 tokens into a deterministic 384-dimensional vector. It is a private, credential-free baseline, not a
 claim of production semantic quality.
 
-## Ingestion lifecycle
+## Current ingestion lifecycle
 
 For an add or change event:
 
-1. Assign a new generation to the canonical path.
+1. Assign a new generation to the watcher event path.
 2. Wait for file size and modification time to stabilize.
 3. Apply file type, path, symlink, readability, and size policies.
 4. Hash file bytes and compute an ingestion-configuration fingerprint.
@@ -118,11 +121,34 @@ For an add or change event:
 6. Extract normalized text and source sections.
 7. Produce deterministic structure-aware chunks.
 8. Generate embeddings in bounded batches.
-9. Recheck cancellation and generation freshness.
+9. Recheck cancellation and generation freshness immediately before replacement.
 10. Transactionally replace the document and its chunks.
 
 For deletion, pending work is cancelled and the durable document is removed. On startup, current
 watched files are compared with durable documents so missed changes are repaired.
+
+The lifecycle is only partially hardened. The check in step 9 is outside the transaction, deletion is
+not serialized with pending status writes, and a successful empty/non-indexable replacement updates
+the document without clearing previous chunks. IDX-005 requires freshness and active-root validation
+inside the serialized mutation, deletion tombstone safety, and atomic zero-chunk replacement.
+
+## Known integrity and security gaps
+
+The implemented foundation must not be treated as retrieval-ready until these gaps are resolved:
+
+- A directory symlink below a watched root can cause Chokidar to emit a lexically in-root path whose
+  canonical target is outside the managed root.
+- Hashing and extraction reopen the source path independently, so a path swap can make persisted
+  fingerprints describe different bytes from the indexed chunks.
+- A file that changes to empty or otherwise non-indexable content can retain old chunks; a later
+  unchanged scan can mark that record indexed again.
+- A newer generation or deletion can arrive after the last freshness check but before an older
+  database transaction commits.
+- IPC handlers validate folder values indirectly but do not yet enforce a trusted sender-frame/origin
+  policy, and top-level renderer navigation is not explicitly denied.
+
+These are verified gaps in the current implementation, not descriptions of planned behavior. Work is
+tracked by IDX-004, IDX-005, HARD-003, and RAGX-004 in the active task records.
 
 ## Data model
 
@@ -172,6 +198,10 @@ No IPC method will accept arbitrary SQL, unrestricted paths, credentials, or pro
 - Use a constrained OfficeParser adapter for structured formats; see ADR-003.
 - Keep watcher and ingestion responsibilities separate.
 - Replace chunks atomically so failed indexing preserves the previous valid index.
+- Treat canonical containment and commit freshness as database-ingestion invariants, not best-effort
+  preflight checks.
+- Clear prior chunks atomically when successful processing determines that current content is empty or
+  otherwise non-indexable.
 - Fingerprint content plus extractor, chunker, and embedding configuration.
 - Treat structured retrieval records, not model-written citation markup, as citation truth.
 - Start with exact cosine-distance retrieval and benchmark before adding complexity.
@@ -181,16 +211,19 @@ protected datastore, external dependency, and cross-component ownership choices.
 
 ## Failure and recovery policy
 
-| Failure                                   | Required behavior                                      |
-| ----------------------------------------- | ------------------------------------------------------ |
-| Unsupported/binary/symlink/oversized file | Mark skipped; do not retry indefinitely                |
-| File changes during work                  | Cancel and supersede with the newer generation         |
-| File disappears                           | Cancel work and remove its durable record              |
-| Extraction or embedding failure           | Keep the prior valid index and store a sanitized error |
-| Vector dimension mismatch                 | Reject the replacement                                 |
-| No relevant retrieval result              | Return insufficient context                            |
-| Migration failure                         | Do not start indexing; show a startup error            |
-| Shutdown during work                      | Abort or drain without committing a partial document   |
+| Failure                                    | Required behavior                                      |
+| ------------------------------------------ | ------------------------------------------------------ |
+| Unsupported/binary/symlink/oversized file  | Mark skipped; do not retry indefinitely                |
+| Canonical target leaves an active root     | Reject access and do not persist or expose the target  |
+| Successful empty/non-indexable replacement | Clear prior chunks and retain a non-indexed status     |
+| File changes during work                   | Cancel and supersede with the newer generation         |
+| File disappears                            | Cancel work and remove its durable record              |
+| Stale generation reaches commit            | Reject the mutation inside the serialized commit       |
+| Extraction or embedding failure            | Keep the prior valid index and store a sanitized error |
+| Vector dimension mismatch                  | Reject the replacement                                 |
+| No relevant retrieval result               | Return insufficient context                            |
+| Migration failure                          | Do not start indexing; show a startup error            |
+| Shutdown during work                       | Abort or drain without committing a partial document   |
 
 ## Scaling and packaging constraints
 
@@ -216,6 +249,6 @@ protected datastore, external dependency, and cross-component ownership choices.
 - `tasks/active/rag-retrieval-and-chat.md` covers the core retrieval and chat implementation.
 - `tasks/active/rag-security-reliability-and-future.md` covers configuration, privacy, diagnostics,
   recovery, format evaluation, end-to-end verification, and deferred enhancements.
-- `tasks/active/indexing-release-verification.md` covers remaining extractor fixtures and architecture
-  approval.
+- `tasks/active/indexing-release-verification.md` covers containment and commit-integrity hardening,
+  remaining extractor fixtures, packaged verification, and architecture approval.
 - `docs/release-checklist.md` defines platform and packaged-runtime verification.
