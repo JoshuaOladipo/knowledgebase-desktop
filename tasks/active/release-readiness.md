@@ -204,7 +204,7 @@ Commit:
 
 - macOS x64 support is unresolved.
 - Production signing/notarization credentials are not configured.
-- RAG release scenarios depend on unfinished retrieval/chat work.
+- Packaged RAG scenarios depend on installable target artifacts and target-platform runtime access.
 
 ## Handoff
 

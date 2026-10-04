@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { IndexStatus } from '../../../shared/contracts'
 import { formatBytes } from '../fileState'
 import { activeIndexPhases, indexIsWorking, indexPhaseBadge } from '../indexPresentation'
@@ -12,38 +12,50 @@ export default function IndexStatusPanel(): React.JSX.Element {
   const [status, setStatus] = useState<IndexStatus>()
   const [error, setError] = useState<string>()
   const [actionPending, setActionPending] = useState(false)
+  const statusRequest = useRef<Promise<IndexStatus> | undefined>(undefined)
+
+  const requestStatus = useCallback((): Promise<IndexStatus> => {
+    if (statusRequest.current) return statusRequest.current
+    const request = window.pcAgent.getIndexStatus()
+    statusRequest.current = request
+    const clear = (): void => {
+      if (statusRequest.current === request) statusRequest.current = undefined
+    }
+    void request.then(clear, clear)
+    return request
+  }, [])
 
   const refresh = useCallback(async (): Promise<void> => {
     try {
-      setStatus(await window.pcAgent.getIndexStatus())
+      setStatus(await requestStatus())
       setError(undefined)
     } catch (cause) {
       setError(errorMessage(cause))
     }
-  }, [])
+  }, [requestStatus])
 
   useEffect(() => {
     let active = true
-    const load = (): void => {
-      void window.pcAgent
-        .getIndexStatus()
-        .then((next) => {
-          if (active) {
-            setStatus(next)
-            setError(undefined)
-          }
-        })
-        .catch((cause) => {
-          if (active) setError(errorMessage(cause))
-        })
+    let timeout: number | undefined
+    const load = async (): Promise<void> => {
+      try {
+        const next = await requestStatus()
+        if (active) {
+          setStatus(next)
+          setError(undefined)
+        }
+      } catch (cause) {
+        if (active) setError(errorMessage(cause))
+      } finally {
+        if (active) timeout = window.setTimeout(() => void load(), 1_000)
+      }
     }
-    load()
-    const interval = window.setInterval(load, 1_000)
+    void load()
     return () => {
       active = false
-      window.clearInterval(interval)
+      if (timeout !== undefined) window.clearTimeout(timeout)
     }
-  }, [])
+  }, [requestStatus])
 
   async function run(action: () => Promise<unknown>): Promise<void> {
     setActionPending(true)
@@ -88,6 +100,12 @@ export default function IndexStatusPanel(): React.JSX.Element {
 
       {status && status.documents.length > 0 && (
         <div className="mt-4 max-h-72 overflow-x-auto">
+          {status.documentsTruncated && (
+            <p className="mb-2 text-xs text-base-content/60">
+              Showing the {status.documents.length} most recently updated of {status.documentsTotal}{' '}
+              documents.
+            </p>
+          )}
           <table className="table table-sm">
             <thead>
               <tr>
@@ -181,6 +199,11 @@ export default function IndexStatusPanel(): React.JSX.Element {
       {error && (
         <p className="alert alert-error mt-3 text-sm" role="alert">
           {error}
+        </p>
+      )}
+      {!error && status?.maintenanceError && (
+        <p className="alert alert-error mt-3 text-sm" role="alert">
+          {status.maintenanceError}
         </p>
       )}
     </section>

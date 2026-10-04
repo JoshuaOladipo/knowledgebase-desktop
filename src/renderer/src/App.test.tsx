@@ -49,12 +49,15 @@ const phases: IndexDocumentPhase[] = [
 ]
 const indexStatus: IndexStatus = {
   documents: [],
+  documentsTotal: 0,
+  documentsTruncated: false,
   counts: Object.fromEntries(phases.map((phase) => [phase, 0])) as Record<
     IndexDocumentPhase,
     number
   >,
   pendingJobs: 0,
   activeWorkers: 0,
+  maintenanceError: null,
   chunkCount: 0,
   databaseBytes: 0,
   diagnostics

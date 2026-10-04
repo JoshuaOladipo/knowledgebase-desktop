@@ -71,7 +71,7 @@ Tests:
 
 Verification:
 
-- On 2026-10-04, frozen offline installation, repository-wide Prettier, lint, typecheck, 94 tests,
+- On 2026-10-04, frozen offline installation, repository-wide Prettier, lint, typecheck, 100 tests,
   production build, and project validation passed in the existing checkout.
 - pnpm still reports the explicitly ignored transitive `tesseract.js@7.0.0` build script; README
   documents that this is intentional because OCR is disabled.
@@ -129,7 +129,7 @@ Tests:
 
 Verification:
 
-- The complete 94-test suite, renderer typecheck, lint, and production build passed on 2026-10-04.
+- The complete 100-test suite, renderer typecheck, lint, and production build passed on 2026-10-04.
 
 Commit:
 
@@ -187,7 +187,7 @@ Tests:
 
 Verification:
 
-- Lint, typecheck, and the 94-test suite passed on 2026-10-04.
+- Lint, typecheck, and the 100-test suite passed on 2026-10-04.
 
 Commit:
 
@@ -239,7 +239,7 @@ Tests:
 
 Verification:
 
-- Renderer state and component tests pass as part of the 94-test suite; renderer typecheck, lint, and
+- Renderer state and component tests pass as part of the 100-test suite; renderer typecheck, lint, and
   production build pass.
 
 Commit:
@@ -304,7 +304,7 @@ Commit:
 - Authorized: All pending tasks that do not require a protected owner decision.
 - Implemented: Watcher/renderer error recovery, IPC sender/payload and navigation controls, coherent
   selection/details state, repository formatting, and current limitations documentation.
-- Verified: Frozen offline install in the existing checkout, Prettier, lint, typecheck, 94 tests,
+- Verified: Frozen offline install in the existing checkout, Prettier, lint, typecheck, 100 tests,
   production build, project validation, and Linux x64 packaged native/parser smoke.
 - Remaining: Clean-checkout and clean-machine cross-platform release evidence.
 - Risks/blockers: Clean runners and Windows/macOS machines are unavailable locally; pnpm reports the

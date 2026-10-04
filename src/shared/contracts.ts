@@ -108,9 +108,12 @@ export interface DiagnosticsSnapshot {
 
 export interface IndexStatus {
   documents: IndexDocumentState[]
+  documentsTotal: number
+  documentsTruncated: boolean
   counts: Record<IndexDocumentPhase, number>
   pendingJobs: number
   activeWorkers: number
+  maintenanceError: string | null
   chunkCount: number
   databaseBytes: number
   diagnostics: DiagnosticsSnapshot

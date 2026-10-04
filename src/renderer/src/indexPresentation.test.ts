@@ -15,6 +15,8 @@ function status(phase: IndexStatus['documents'][number]['status']): IndexStatus 
         updatedAt: '2026-10-04T00:00:00.000Z'
       }
     ],
+    documentsTotal: 1,
+    documentsTruncated: false,
     counts: {
       queued: 0,
       extracting: 0,
@@ -26,6 +28,7 @@ function status(phase: IndexStatus['documents'][number]['status']): IndexStatus 
     },
     pendingJobs: 0,
     activeWorkers: 0,
+    maintenanceError: null,
     chunkCount: 0,
     databaseBytes: 0,
     diagnostics: {

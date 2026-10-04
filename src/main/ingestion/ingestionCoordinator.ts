@@ -30,6 +30,9 @@ export type IngestionMutationStage =
   | 'replacement'
   | 'error-status'
 
+const MAINTENANCE_ERROR_MESSAGE =
+  'Index maintenance failed. Retry indexing or restart the application.'
+
 function abortError(): DOMException {
   return new DOMException('Ingestion was cancelled.', 'AbortError')
 }
@@ -50,6 +53,8 @@ export class IngestionCoordinator {
   private readonly metrics?: OperationMetricRecorder
   private readonly beforeMutation?: IngestionCoordinatorOptions['beforeMutation']
   private mutationTail: Promise<void> = Promise.resolve()
+  private readonly backgroundMutations = new Set<Promise<void>>()
+  private maintenanceError: string | null = null
 
   constructor(
     database: ConstructorParameters<typeof DocumentRepository>[0],
@@ -71,7 +76,7 @@ export class IngestionCoordinator {
   setActiveRoots(roots: string[]): void {
     this.activeRoots = [...roots]
     this.queue.cancelOutsideRoots(roots, pathIsInside)
-    void this.serializeMutation(async () => {
+    this.runBackgroundMutation(async () => {
       for (const document of await this.documents.list()) {
         if (!roots.some((root) => pathIsInside(root, document.path))) {
           await this.documents.deleteByPath(document.path)
@@ -83,7 +88,7 @@ export class IngestionCoordinator {
   handleFileEvent(event: FileEvent): void {
     if (event.type === 'unlink') {
       this.queue.cancel(event.path)
-      void this.serializeMutation(() => this.documents.deleteByPath(event.path))
+      this.runBackgroundMutation(() => this.documents.deleteByPath(event.path))
       return
     }
     if (!event.entry || event.entry.isDirectory) return
@@ -113,6 +118,7 @@ export class IngestionCoordinator {
 
   /** Forces every currently visible supported file through the latest configuration. */
   reindexAll(files: FileEntry[]): void {
+    this.maintenanceError = null
     for (const file of files) {
       if (file.isDirectory) continue
       const watchedRoot = this.findRoot(file.path)
@@ -123,21 +129,24 @@ export class IngestionCoordinator {
   retry(path: string): void {
     const watchedRoot = this.findRoot(path)
     if (!watchedRoot) throw new Error('Document is outside the active watched roots.')
+    this.maintenanceError = null
     this.enqueue(path, watchedRoot, true)
   }
 
-  getQueueState(): { pendingJobs: number; activeWorkers: number } {
-    return this.queue.getState()
+  getQueueState(): { pendingJobs: number; activeWorkers: number; maintenanceError: string | null } {
+    return { ...this.queue.getState(), maintenanceError: this.maintenanceError }
   }
 
   async onIdle(): Promise<void> {
     await this.queue.onIdle()
     await this.mutationTail
+    await Promise.all([...this.backgroundMutations])
   }
 
   async close(): Promise<void> {
     await this.queue.close()
     await this.mutationTail
+    await Promise.all([...this.backgroundMutations])
   }
 
   private findRoot(path: string): string | undefined {
@@ -148,7 +157,7 @@ export class IngestionCoordinator {
 
   private enqueue(path: string, watchedRoot: string, force = false): void {
     const generation = this.queue.enqueue({ path, watchedRoot, force })
-    void this.serializeMutation(async () => {
+    this.runBackgroundMutation(async () => {
       await this.beforeMutation?.('queued-status', path)
       if (
         this.queue.isCurrent(path, generation) &&
@@ -216,6 +225,21 @@ export class IngestionCoordinator {
       () => undefined
     )
     return result
+  }
+
+  /** Tracks non-awaited maintenance writes and exposes sanitized failures through index state. */
+  private runBackgroundMutation(operation: () => Promise<void>): void {
+    const mutation = this.serializeMutation(operation).then(
+      () => undefined,
+      (error: unknown) => {
+        if (!(error instanceof DOMException && error.name === 'AbortError')) {
+          this.maintenanceError = MAINTENANCE_ERROR_MESSAGE
+          this.metrics?.record('index-maintenance', 0, 'failure')
+        }
+      }
+    )
+    this.backgroundMutations.add(mutation)
+    void mutation.finally(() => this.backgroundMutations.delete(mutation))
   }
 
   private mutateIfCurrent<T>(

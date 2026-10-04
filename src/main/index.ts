@@ -19,6 +19,7 @@ import {
 import { registerChatIpcHandlers } from './chatIpc'
 import { LocalDiagnostics } from './diagnostics'
 import { registerIndexIpcHandlers } from './indexIpc'
+import { shutdownApplicationServices } from './shutdown'
 
 let tray: Tray | null = null
 let watcherService: WatcherService
@@ -213,12 +214,18 @@ app.on('before-quit', (event) => {
   if (shuttingDown) return
   event.preventDefault()
   shuttingDown = true
-  void (async () => {
-    if (watcherService) await watcherService.stop()
-    if (ingestionCoordinator) await ingestionCoordinator.close()
-    if (databaseService) await databaseService.close()
-    app.quit()
-  })()
+  void shutdownApplicationServices({
+    watcher: watcherService,
+    ingestion: ingestionCoordinator,
+    database: databaseService
+  })
+    .catch(() => {
+      dialog.showErrorBox(
+        'PC Agent shutdown warning',
+        'One or more background services could not close cleanly.'
+      )
+    })
+    .finally(() => app.quit())
 })
 
 app.on('window-all-closed', () => {

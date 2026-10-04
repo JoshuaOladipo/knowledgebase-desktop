@@ -137,6 +137,28 @@ describe('knowledge-base database', () => {
     await service.close()
   })
 
+  it('bounds document status listings and reports complete status counts', async () => {
+    const { service, database } = await createDatabase()
+    const documents = new DocumentRepository(database)
+    await documents.upsert(document)
+    await documents.upsert({
+      ...document,
+      path: '/documents/second.md',
+      name: 'second.md',
+      status: 'error'
+    })
+
+    expect(await documents.listWithChunkCounts(1)).toHaveLength(1)
+    expect(await documents.countByStatus()).toEqual(
+      expect.arrayContaining([
+        { status: 'indexed', count: 1 },
+        { status: 'error', count: 1 }
+      ])
+    )
+    await expect(documents.listWithChunkCounts(0)).rejects.toThrow('between 1 and 1,000')
+    await service.close()
+  })
+
   it('rolls back a failed replacement and validates embedding dimensions', async () => {
     const { service, database } = await createDatabase()
     const chunks = new ChunkRepository(database)

@@ -18,7 +18,10 @@ export interface IndexIpcDependencies {
   trustedRendererUrl: string
   revealFile: (canonicalPath: string) => void
   exportDiagnostics: (snapshot: DiagnosticsSnapshot) => Promise<boolean>
+  documentLimit?: number
 }
+
+export const INDEX_STATUS_DOCUMENT_LIMIT = 200
 
 function validateString(value: unknown, label: string, maximum: number): string {
   if (typeof value !== 'string' || value.trim().length === 0 || value.length > maximum) {
@@ -55,12 +58,21 @@ export function registerIndexIpcHandlers(
   ipc.handle(ipcChannels.getIndexStatus, async (event, ...args): Promise<IndexStatus> => {
     trusted(event)
     if (args.length !== 0) throw new Error('Index status does not accept arguments.')
-    const records = await documents.listWithChunkCounts()
+    const documentLimit = dependencies.documentLimit ?? INDEX_STATUS_DOCUMENT_LIMIT
+    const [records, statusCounts, chunkCount, size] = await Promise.all([
+      documents.listWithChunkCounts(documentLimit),
+      documents.countByStatus(),
+      documents.countChunks(),
+      databaseSize(dependencies.database)
+    ])
     const counts = Object.fromEntries(phases.map((phase) => [phase, 0])) as Record<
       IndexDocumentPhase,
       number
     >
-    for (const record of records) counts[record.status] += 1
+    for (const record of statusCounts) {
+      if (phases.includes(record.status)) counts[record.status] = record.count
+    }
+    const documentsTotal = Object.values(counts).reduce((total, count) => total + count, 0)
     return {
       documents: records.map((record) => ({
         id: record.id,
@@ -71,10 +83,12 @@ export function registerIndexIpcHandlers(
         chunkCount: record.chunkCount,
         updatedAt: record.updatedAt
       })),
+      documentsTotal,
+      documentsTruncated: documentsTotal > records.length,
       counts,
       ...dependencies.ingestion.getQueueState(),
-      chunkCount: await documents.countChunks(),
-      databaseBytes: await databaseSize(dependencies.database),
+      chunkCount,
+      databaseBytes: size,
       diagnostics: dependencies.diagnostics.snapshot()
     }
   })

@@ -28,7 +28,9 @@ describe('index IPC', () => {
   it('exposes aggregate status and validates re-index, retry, reveal, clear, and export', async () => {
     directory = await mkdtemp(join(tmpdir(), 'pc-agent-index-ipc-'))
     const path = join(directory, 'note.txt')
+    const secondPath = join(directory, 'second.txt')
     await writeFile(path, 'evidence', 'utf8')
+    await writeFile(secondPath, 'second', 'utf8')
     databaseService = new DatabaseService(':memory:')
     const database = await databaseService.open()
     const chunks = new ChunkRepository(database)
@@ -58,9 +60,27 @@ describe('index IPC', () => {
         }
       ]
     )
+    await chunks.replaceDocument(
+      {
+        path: secondPath,
+        name: 'second.txt',
+        watchedRoot: directory,
+        mimeType: 'text/plain',
+        size: 6,
+        modifiedAt: new Date().toISOString(),
+        contentHash: 'second-hash',
+        configFingerprint: 'config',
+        status: 'indexed'
+      },
+      []
+    )
     const handlers = new Map<string, Handler>()
     const ingestion = {
-      getQueueState: vi.fn(() => ({ pendingJobs: 2, activeWorkers: 1 })),
+      getQueueState: vi.fn(() => ({
+        pendingJobs: 2,
+        activeWorkers: 1,
+        maintenanceError: 'Index maintenance failed.'
+      })),
       reindexAll: vi.fn(),
       retry: vi.fn()
     }
@@ -81,18 +101,24 @@ describe('index IPC', () => {
         diagnostics,
         trustedRendererUrl: 'file:///app/index.html',
         revealFile,
-        exportDiagnostics
+        exportDiagnostics,
+        documentLimit: 1
       }
     )
 
-    await expect(handlers.get(ipcChannels.getIndexStatus)!(event())).resolves.toMatchObject({
-      counts: { indexed: 1 },
+    const status = await handlers.get(ipcChannels.getIndexStatus)!(event())
+    expect(status).toMatchObject({
+      counts: { indexed: 2 },
+      documentsTotal: 2,
+      documentsTruncated: true,
       pendingJobs: 2,
       activeWorkers: 1,
+      maintenanceError: 'Index maintenance failed.',
       chunkCount: 1,
-      documents: [{ id: document.id, path, status: 'indexed', chunkCount: 1 }],
+      documents: expect.any(Array),
       diagnostics: { telemetryEnabled: false }
     })
+    expect((status as { documents: unknown[] }).documents).toHaveLength(1)
     await handlers.get(ipcChannels.reindexAll)!(event())
     expect(ingestion.reindexAll).toHaveBeenCalledWith(watcher.getFiles())
     await handlers.get(ipcChannels.retryDocument)!(event(), document.id)

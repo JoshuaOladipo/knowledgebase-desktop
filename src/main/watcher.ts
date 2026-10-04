@@ -128,6 +128,13 @@ export class WatcherService {
     return this.getState()
   }
 
+  /** Stops native watching for process shutdown without removing the configured logical roots. */
+  async shutdown(): Promise<void> {
+    ++this.generation
+    await this.closeWatcher()
+    this.files.clear()
+  }
+
   /** Detaches and closes the underlying Chokidar watcher when present. */
   private async closeWatcher(): Promise<void> {
     const watcher = this.watcher

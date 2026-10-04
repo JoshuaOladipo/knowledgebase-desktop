@@ -16,8 +16,8 @@ foundations of the RAG system:
 - Typed ask, cancel, settings, conversation read/list/delete IPC and a grounded chat UI.
 - Durable conversations, messages, and immutable citation snapshots retained until explicit deletion.
 
-Index-state/re-index/reveal IPC, indexing UI, retrieval benchmarks, and broader packaged verification
-remain planned.
+Index-state/re-index/reveal IPC, the indexing UI, and local retrieval benchmarks are implemented.
+Broader installed-package and cross-platform verification remains planned.
 
 ## Goals
 
@@ -192,7 +192,8 @@ Implemented preload operations remain task-oriented:
 
 Still planned:
 
-- Push indexing-event subscription; the current UI polls bounded snapshots.
+- Push indexing-event subscription; the current UI serially polls snapshots containing complete
+  aggregate counts and at most 200 recently updated document records.
 
 No IPC method will accept arbitrary SQL, unrestricted paths, credentials, or provider SDK objects.
 
@@ -238,6 +239,7 @@ ADR-001, ADR-002, ADR-003, and ADR-004 were explicitly approved on 2026-10-03.
 | No relevant retrieval result               | Return insufficient context                            |
 | Migration failure                          | Do not start indexing; show a startup error            |
 | Shutdown during work                       | Abort or drain without committing a partial document   |
+| Normal application shutdown                | Preserve durable documents/chunks and configured roots |
 
 ## Scaling and packaging constraints
 

@@ -16,3 +16,8 @@ Current active records:
   end-to-end tests, encryption, and deferred enhancements.
 - `project-hardening.md`: package reproducibility, watcher/renderer errors, IPC, and UI state.
 - `release-readiness.md`: native packages, installed runtime scenarios, signing, and publishing.
+
+Completed records:
+
+- `immediate-defect-remediation.md`: shutdown durability, bounded status polling, mutation-error
+  reporting, and status-documentation corrections.

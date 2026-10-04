@@ -234,7 +234,7 @@ Tests:
 
 Verification:
 
-- Focused watcher/ingestion tests and the complete 94-test suite, lint, typecheck, and build passed on
+- Focused watcher/ingestion tests and the complete 100-test suite, lint, typecheck, and build passed on
   2026-10-04.
 
 Commit:
@@ -300,7 +300,7 @@ Tests:
 
 Verification:
 
-- Ingestion/database tests and the complete 94-test suite, lint, typecheck, and production build
+- Ingestion/database tests and the complete 100-test suite, lint, typecheck, and production build
   passed on 2026-10-04.
 
 Commit:
@@ -318,7 +318,7 @@ Commit:
 - Authorized: All active tasks; ADR-001, ADR-002, and ADR-003 are approved.
 - Implemented: Canonical snapshots, generation-safe mutations, zero-chunk replacement, deterministic
   real-format fixtures, archive-limit coverage, and Linux x64 packaged smoke verification.
-- Verified: Prettier, lint, typecheck, 94 tests, production build, project validation, deterministic
+- Verified: Prettier, lint, typecheck, 100 tests, production build, project validation, deterministic
   fixture regeneration, Linux x64 unpacked build, ASAR inspection, and packaged native/parser smoke.
 - Remaining: Encrypted-document fixture coverage and Windows/macOS/Linux ARM64 package and
   installed-artifact checks.

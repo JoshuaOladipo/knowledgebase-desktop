@@ -167,7 +167,7 @@ Tests:
 
 Verification:
 
-- Included in the 94-test suite; typecheck and lint pass.
+- Included in the 100-test suite; typecheck and lint pass.
 
 Commit:
 
@@ -209,6 +209,8 @@ Implementation:
 
 - Generation and active-root freshness, deletion, status writes, replacement, and reconciliation share
   the serialized mutation boundary. Empty/non-indexable replacements clear chunks atomically.
+- Process shutdown closes native watching without publishing empty active roots, then drains ingestion
+  before closing Turso, so normal quit preserves the durable index.
 
 Tests:
 
@@ -217,10 +219,12 @@ Tests:
   drain. Queue/database tests cover cancellation, close/drain, replacement rollback, and migration
   rollback. Watcher tests prove the initial metadata snapshot is complete before the watching state
   triggers reconciliation.
+- `src/main/shutdown.test.ts` composes a real watcher, ingestion coordinator, and file-backed database,
+  then verifies indexed documents and chunks survive shutdown and database reopen.
 
 Verification:
 
-- The complete 94-test suite, typecheck, lint, and production build passed on 2026-10-04.
+- The complete 100-test suite, typecheck, lint, and production build passed on 2026-10-04.
 
 Commit:
 
@@ -378,7 +382,7 @@ Commit:
 - Implemented: Snapshot containment, generation-safe mutations, deterministic advertised-format
   fixtures, interruption races, retrieval/evidence/orchestration foundations, conversation evidence
   persistence, and Linux x64 packaged native/parser smoke verification.
-- Verified: The 94-test local quality suite, typecheck, lint, production build, project validation,
+- Verified: The 100-test local quality suite, typecheck, lint, production build, project validation,
   and prior Linux x64 packaged smoke passed.
 - Remaining: Additional-format evaluation, encrypted fixtures, cloud-provider and telemetry decisions,
   packaged end-to-end chat, encryption policy, and deferred enhancements.

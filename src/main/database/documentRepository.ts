@@ -37,13 +37,30 @@ export class DocumentRepository {
     return row ? mapDocument(row) : null
   }
 
-  async listWithChunkCounts(): Promise<Array<DocumentRecord & { chunkCount: number }>> {
+  async listWithChunkCounts(
+    limit: number
+  ): Promise<Array<DocumentRecord & { chunkCount: number }>> {
+    if (!Number.isInteger(limit) || limit < 1 || limit > 1_000) {
+      throw new Error('Document status limit must be an integer between 1 and 1,000.')
+    }
     const rows = (await this.database.all(
       `SELECT d.*, COUNT(c.id) AS chunk_count
        FROM documents d LEFT JOIN chunks c ON c.document_id = d.id
-       GROUP BY d.id ORDER BY d.path`
+       GROUP BY d.id ORDER BY d.updated_at DESC, d.path
+       LIMIT ?`,
+      limit
     )) as DocumentRow[]
     return rows.map((row) => ({ ...mapDocument(row), chunkCount: Number(row.chunk_count) }))
+  }
+
+  async countByStatus(): Promise<Array<{ status: DocumentStatus; count: number }>> {
+    const rows = (await this.database.all(
+      'SELECT status, COUNT(*) AS count FROM documents GROUP BY status'
+    )) as DocumentRow[]
+    return rows.map((row) => ({
+      status: String(row.status) as DocumentStatus,
+      count: Number(row.count)
+    }))
   }
 
   async countChunks(): Promise<number> {

@@ -600,6 +600,81 @@ describe('ingestion coordinator', () => {
     await service.close()
   })
 
+  it('surfaces sanitized background mutation failures and clears them after recovery', async () => {
+    const root = await temporaryFolder()
+    const path = join(root, 'maintenance-error.md')
+    await writeFile(path, '# Maintenance\n\nBackground status writes must report failures safely.')
+    const service = new DatabaseService(join(root, 'maintenance-error.db'))
+    const database = await service.open()
+    let failQueuedStatus = true
+    const coordinator = new IngestionCoordinator(database, new LocalHashEmbeddingProvider(16, 4), {
+      stabilizationDelayMs: 0,
+      beforeMutation: async (stage) => {
+        if (stage === 'queued-status' && failQueuedStatus) {
+          failQueuedStatus = false
+          throw new Error(`Sensitive path: ${path}`)
+        }
+      }
+    })
+    coordinator.setActiveRoots([root])
+    coordinator.handleFileEvent({
+      type: 'add',
+      path,
+      entry: {
+        path,
+        name: 'maintenance-error.md',
+        size: 70,
+        createdAt: new Date().toISOString(),
+        modifiedAt: new Date().toISOString(),
+        isDirectory: false
+      }
+    })
+    await coordinator.onIdle()
+    expect(coordinator.getQueueState().maintenanceError).toBe(
+      'Index maintenance failed. Retry indexing or restart the application.'
+    )
+    expect(coordinator.getQueueState().maintenanceError).not.toContain(path)
+
+    coordinator.retry(path)
+    await coordinator.onIdle()
+    expect(coordinator.getQueueState().maintenanceError).toBeNull()
+    await coordinator.close()
+    await service.close()
+  })
+
+  it('does not report expected background cancellation as maintenance failure', async () => {
+    const root = await temporaryFolder()
+    const path = join(root, 'cancelled-status.md')
+    await writeFile(path, '# Cancellation\n\nExpected cancellation is not a maintenance failure.')
+    const service = new DatabaseService(join(root, 'cancelled-status.db'))
+    const database = await service.open()
+    const coordinator = new IngestionCoordinator(database, new LocalHashEmbeddingProvider(16, 4), {
+      stabilizationDelayMs: 0,
+      beforeMutation: async (stage) => {
+        if (stage === 'queued-status') {
+          throw new DOMException('Expected cancellation.', 'AbortError')
+        }
+      }
+    })
+    coordinator.setActiveRoots([root])
+    coordinator.handleFileEvent({
+      type: 'add',
+      path,
+      entry: {
+        path,
+        name: 'cancelled-status.md',
+        size: 68,
+        createdAt: new Date().toISOString(),
+        modifiedAt: new Date().toISOString(),
+        isDirectory: false
+      }
+    })
+    await coordinator.onIdle()
+    expect(coordinator.getQueueState().maintenanceError).toBeNull()
+    await coordinator.close()
+    await service.close()
+  })
+
   it('aborts in-flight embedding and drains before shutdown completes', async () => {
     const root = await temporaryFolder()
     const path = join(root, 'shutdown.md')

@@ -263,7 +263,7 @@ Tests:
 
 Verification:
 
-- Included in the 94-test suite; typecheck and lint pass.
+- Included in the 100-test suite; typecheck and lint pass.
 
 Commit:
 
@@ -302,6 +302,8 @@ Implementation:
   conversations, and renders answer text and citation snapshots as separate content.
 - `IndexStatusPanel` polls bounded index snapshots, displays queue/document stages and failures,
   supports retry/re-index, and presents privacy-safe timing/storage diagnostics.
+- Aggregate status covers the complete index while per-document IPC results are capped at the 200 most
+  recently updated records. Polls are serialized so a slow request cannot accumulate overlaps.
 - Citation reveal is routed through validated main-process IPC and the system file manager.
 
 Tests:
@@ -309,10 +311,11 @@ Tests:
 - `chatPresentation.test.ts` covers answering/cancelling/completion, insufficient context, and
   structured citation presentation.
 - `indexPresentation.test.ts` covers queue/stage activity and terminal-state presentation.
+- `IndexStatusPanel.test.tsx` proves a pending status request prevents another poll from starting.
 
 Verification:
 
-- Included in the 94-test suite; renderer typecheck and lint pass.
+- Included in the 100-test suite; renderer typecheck and lint pass.
 
 Commit:
 
@@ -381,7 +384,7 @@ Commit:
 - Implemented: Retrieval, evidence selection, grounded local generation, conversation persistence,
   typed chat/index IPC, cancellation, local settings, chat/index status UI, validated citation
   reveal, and privacy-safe diagnostics.
-- Verified: The 94-test suite, typecheck, lint, production build, and project validation pass.
+- Verified: The 100-test suite, typecheck, lint, production build, and project validation pass.
 - Remaining: Provider/end-to-end packaged measurements and broader packaged verification.
 - Risks/blockers: Encryption policy, representative evaluation data, and cross-platform runners.
 - Next action: Run packaged end-to-end scenarios on supported platform runners.
