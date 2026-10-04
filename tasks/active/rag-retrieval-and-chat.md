@@ -146,7 +146,8 @@ Expected verification:
 
 Architecture impact:
 
-- A cloud provider is a protected external dependency and requires approval plus security disclosure.
+- User-configured remote generation is approved by ADR-005 with explicit security disclosure.
+- Authenticated providers remain a separate protected dependency and require credential-storage work.
 
 Implementation:
 
@@ -155,8 +156,9 @@ Implementation:
 - `GroundedAnswerService` embeds, retrieves, selects, delimits untrusted evidence for grounded
   answers, falls back to explicitly classified general model knowledge, and maps only actual source
   records.
-- `LocalServerGenerationProvider` validates a loopback-only, credential-free OpenAI-compatible
-  endpoint and performs bounded, cancellable, non-streaming chat-completion requests.
+- `OpenAiCompatibleGenerationProvider` validates a credential-free local or remote HTTP(S) endpoint
+  and performs bounded, cancellable, non-streaming chat-completion requests with strict response
+  schemas and redirect rejection.
 
 Tests:
 
@@ -265,7 +267,7 @@ Tests:
 
 Verification:
 
-- Included in the 107-test suite; typecheck and lint pass.
+- Included in the 109-test suite; typecheck and lint pass.
 
 Commit:
 
@@ -301,9 +303,9 @@ Architecture impact:
 
 Implementation:
 
-- `ChatPanel` configures the local server, submits/cancels questions, loads/deletes retained
-  conversations, renders answer text and citation snapshots separately, and displays a durable
-  warning on ungrounded answers.
+- `ChatPanel` configures the generation server, discloses remote evidence transfer and unencrypted
+  HTTP, submits/cancels questions, loads/deletes retained conversations, renders answer text and
+  citation snapshots separately, and displays a durable warning on ungrounded answers.
 - `IndexStatusPanel` polls bounded index snapshots, displays queue/document stages and failures,
   supports retry/re-index, and presents privacy-safe timing/storage diagnostics.
 - Aggregate status covers the complete index while per-document IPC results are capped at the 200 most
@@ -319,7 +321,7 @@ Tests:
 
 Verification:
 
-- Included in the 107-test suite; renderer typecheck and lint pass.
+- Included in the 109-test suite; renderer typecheck and lint pass.
 
 Commit:
 
@@ -375,20 +377,21 @@ Commit:
 
 ## Decisions / blockers
 
-- The first provider is the approved user-managed loopback OpenAI-compatible server in ADR-004.
+- The first provider is the approved user-managed local or remote OpenAI-compatible server in ADR-005,
+  which supersedes the loopback-only ADR-004 decision.
 - Conversation history is retained locally until explicit deletion. Database encryption remains
   unresolved.
 - Retrieval quality thresholds require representative evaluation data.
-- Cloud providers, synchronization, new services, and new datastores require protected-decision
-  approval.
+- Authenticated providers, synchronization, new services, and new datastores require separate
+  protected-decision approval.
 
 ## Handoff
 
-- Authorized: All active tasks; ADR-001, ADR-002, and ADR-003 were explicitly approved.
-- Implemented: Retrieval, evidence selection, grounded local generation, conversation persistence,
-  typed chat/index IPC, cancellation, local settings, chat/index status UI, validated citation
-  reveal, and privacy-safe diagnostics.
-- Verified: The 107-test suite, typecheck, lint, and production build pass; the previously recorded
+- Authorized: All active tasks; ADR-001, ADR-002, ADR-003, and ADR-005 were explicitly approved.
+- Implemented: Retrieval, evidence selection, grounded generation, conversation persistence, typed
+  chat/index IPC, cancellation, generation-server settings and disclosure, chat/index status UI,
+  validated citation reveal, and privacy-safe diagnostics.
+- Verified: The 109-test suite, typecheck, lint, and production build pass; the previously recorded
   project validation result remains unchanged.
 - Remaining: Provider/end-to-end packaged measurements and broader packaged verification.
 - Risks/blockers: Encryption policy, representative evaluation data, and cross-platform runners.

@@ -2,13 +2,14 @@ import { useEffect, useState, type FormEvent } from 'react'
 import type {
   ChatMessage,
   ConversationSummary,
-  LocalGenerationSettings
+  GenerationServerSettings
 } from '../../../shared/contracts'
 import {
   beginChatRequest,
   cancelChatRequest,
   completeChatRequest,
   createChatMessage,
+  generationEndpointPrivacy,
   idleChatRequest,
   messageForAnswer
 } from '../chatPresentation'
@@ -17,9 +18,9 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-/** Provides local-server configuration, grounded chat, citations, and retained conversations. */
+/** Provides generation-server configuration, grounded chat, citations, and retained conversations. */
 export default function ChatPanel(): React.JSX.Element {
-  const [settings, setSettings] = useState<LocalGenerationSettings>()
+  const [settings, setSettings] = useState<GenerationServerSettings>()
   const [conversations, setConversations] = useState<ConversationSummary[]>([])
   const [conversationId, setConversationId] = useState<string>()
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -29,6 +30,7 @@ export default function ChatPanel(): React.JSX.Element {
   const [notice, setNotice] = useState<string>()
   const [savingSettings, setSavingSettings] = useState(false)
   const activeRequestId = requestState.requestId
+  const endpointPrivacy = settings ? generationEndpointPrivacy(settings.endpoint) : 'invalid'
 
   async function refreshConversations(): Promise<void> {
     setConversations(await window.pcAgent.listConversations())
@@ -37,7 +39,7 @@ export default function ChatPanel(): React.JSX.Element {
   useEffect(() => {
     let active = true
     void Promise.all([
-      window.pcAgent.getLocalGenerationSettings(),
+      window.pcAgent.getGenerationServerSettings(),
       window.pcAgent.listConversations()
     ])
       .then(([loadedSettings, loadedConversations]) => {
@@ -60,8 +62,8 @@ export default function ChatPanel(): React.JSX.Element {
     setNotice(undefined)
     setSavingSettings(true)
     try {
-      setSettings(await window.pcAgent.updateLocalGenerationSettings(settings))
-      setNotice('Local server settings saved.')
+      setSettings(await window.pcAgent.updateGenerationServerSettings(settings))
+      setNotice('Generation server settings saved.')
     } catch (cause) {
       setError(errorMessage(cause))
     } finally {
@@ -140,7 +142,7 @@ export default function ChatPanel(): React.JSX.Element {
             Ask your files
           </h2>
           <p className="text-sm text-base-content/60">
-            Answers use indexed evidence when relevant, otherwise your local model’s general
+            Answers use indexed evidence when relevant, otherwise the configured model’s general
             knowledge.
           </p>
         </div>
@@ -158,7 +160,7 @@ export default function ChatPanel(): React.JSX.Element {
       </div>
 
       <details className="collapse-arrow collapse mt-4 border border-base-300">
-        <summary className="collapse-title font-medium">Local model server settings</summary>
+        <summary className="collapse-title font-medium">Generation server settings</summary>
         <div className="collapse-content">
           {settings ? (
             <form
@@ -177,6 +179,17 @@ export default function ChatPanel(): React.JSX.Element {
                   }
                 />
               </label>
+              {(endpointPrivacy === 'remote-encrypted' ||
+                endpointPrivacy === 'remote-unencrypted') && (
+                <div className="alert alert-warning text-sm md:col-span-2" role="note">
+                  <span>
+                    Remote generation sends your question and selected document excerpts to this
+                    server. Its operator may retain or process that data.
+                    {endpointPrivacy === 'remote-unencrypted' &&
+                      ' This HTTP connection is not encrypted in transit.'}
+                  </span>
+                </div>
+              )}
               <label className="form-control">
                 <span className="label-text mb-1">Model name</span>
                 <input
@@ -243,7 +256,7 @@ export default function ChatPanel(): React.JSX.Element {
                     setSettings({ ...settings, enabled: event.currentTarget.checked })
                   }
                 />
-                <span className="label-text">Enable this local server</span>
+                <span className="label-text">Enable this generation server</span>
               </label>
               <div className="flex justify-end md:col-span-2">
                 <button className="btn btn-primary btn-sm" disabled={savingSettings} type="submit">

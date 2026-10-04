@@ -1,6 +1,6 @@
 import type { IpcMainInvokeEvent } from 'electron'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { LocalGenerationSettings } from '../shared/contracts'
+import type { GenerationServerSettings } from '../shared/contracts'
 import { ipcChannels } from '../shared/contracts'
 import { registerChatIpcHandlers, validateAskQuestionRequest } from './chatIpc'
 import { createEmbeddingProvider } from './config/aiSettings'
@@ -8,7 +8,7 @@ import { DatabaseService } from './database/database'
 
 type Handler = (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown
 
-const settings: LocalGenerationSettings = {
+const settings: GenerationServerSettings = {
   enabled: true,
   endpoint: 'http://127.0.0.1:11434/v1',
   model: 'test-model',
@@ -44,7 +44,7 @@ describe('chat IPC', () => {
     databaseService = new DatabaseService(':memory:')
     const database = await databaseService.open()
     const handlers = new Map<string, Handler>()
-    const saveGenerationSettings = vi.fn(async (value: LocalGenerationSettings) => value)
+    const saveGenerationSettings = vi.fn(async (value: GenerationServerSettings) => value)
     registerChatIpcHandlers(
       { handle: (channel, handler) => void handlers.set(channel, handler as Handler) },
       {
@@ -110,7 +110,7 @@ describe('chat IPC', () => {
     await handlers.get(ipcChannels.deleteConversation)!(event(), conversations[0].id)
     await expect(handlers.get(ipcChannels.listConversations)!(event())).resolves.toEqual([])
 
-    await handlers.get(ipcChannels.updateLocalGenerationSettings)!(event(), settings)
+    await handlers.get(ipcChannels.updateGenerationServerSettings)!(event(), settings)
     expect(saveGenerationSettings).toHaveBeenCalledWith(settings)
     await expect(
       handlers.get(ipcChannels.listConversations)!(event('https://attacker.test'))
@@ -148,7 +148,7 @@ describe('chat IPC', () => {
     await expect(pending).rejects.toThrow('cancelled')
   })
 
-  it('reports disabled local generation and missing watched roots before provider work', async () => {
+  it('reports disabled generation and missing watched roots before provider work', async () => {
     databaseService = new DatabaseService(':memory:')
     const database = await databaseService.open()
     const handlers = new Map<string, Handler>()
@@ -173,7 +173,7 @@ describe('chat IPC', () => {
     const request = { requestId: 'offline-request', question: 'Question' }
 
     await expect(handlers.get(ipcChannels.askQuestion)!(event(), request)).rejects.toThrow(
-      'Enable the local generation server'
+      'Enable the generation server'
     )
     loadedSettings = { ...settings, enabled: true }
     await expect(handlers.get(ipcChannels.askQuestion)!(event(), request)).rejects.toThrow(

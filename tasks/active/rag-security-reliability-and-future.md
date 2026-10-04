@@ -70,7 +70,7 @@ Commit:
 
 ### RAGX-002 — Implement secure provider configuration and disclosure
 
-Status: Partially implemented — local provider complete; cloud support remains deferred
+Status: Partially implemented — credential-free remote provider complete; authenticated support deferred
 
 Purpose:
 Allow future model configuration without leaking credentials or silently moving local content to cloud
@@ -78,18 +78,18 @@ services.
 
 Dependencies:
 
-- ADR-004 for the selected user-managed local provider.
-- Selection and approval before adding any cloud provider.
+- ADR-005 for the selected user-managed local or remote provider.
+- Selection, approval, and credential storage before adding an authenticated provider.
 
 Acceptance criteria:
 
 - [ ] Store provider secrets through operating-system credential storage.
 - [x] Never store credentials in `settings.json`, Turso, renderer state, IPC payloads, or logs.
-- [x] Show that the configured provider is a user-managed local server.
-- [x] Safely bound local model, timeout, output, endpoint, retrieval, context, and file-size
+- [x] Disclose when the configured provider can receive questions and evidence remotely.
+- [x] Safely bound model, timeout, output, endpoint, retrieval, context, and file-size
       limit, and enabled-format settings.
 - [ ] Detect configuration changes that require controlled re-indexing.
-- [x] Define provider disablement and sanitized error recovery behavior for the credential-free local
+- [x] Define provider disablement and sanitized error recovery behavior for the credential-free
       provider.
 
 Expected verification:
@@ -98,14 +98,17 @@ Expected verification:
 
 Architecture impact:
 
-- A cloud provider is a protected external dependency and requires approval.
+- Credential-free remote HTTP(S) generation is approved by ADR-005. Authenticated providers still
+  require a separate protected decision and secure credential storage.
 
 Implementation:
 
-- Local generation settings are validated and atomically persisted by the main process.
-- The loopback adapter rejects remote endpoints, URL credentials, queries, fragments, redirects,
-  oversized/malformed responses, and unbounded time/output settings.
-- `ChatPanel` labels and enables/disables the user-managed local server without accepting secrets.
+- Generation settings are validated and atomically persisted by the main process; the legacy settings
+  key is migrated without losing configuration.
+- The adapter accepts user-configured HTTP(S) endpoints while rejecting URL credentials, queries,
+  fragments, redirects, oversized/malformed responses, and unbounded time/output settings.
+- `ChatPanel` discloses remote question/evidence transfer, warns for unencrypted remote HTTP, and does
+  not accept secrets.
 
 Tests:
 

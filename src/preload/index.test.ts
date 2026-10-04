@@ -26,6 +26,21 @@ describe('preload contract', () => {
     expect(invoke).toHaveBeenCalledWith(ipcChannels.startWatching, ['/tmp'])
     await api.getWatchedFiles()
     expect(invoke).toHaveBeenCalledWith(ipcChannels.getWatchedFiles)
+    await api.getGenerationServerSettings()
+    expect(invoke).toHaveBeenCalledWith(ipcChannels.getGenerationServerSettings)
+    const generationSettings = {
+      enabled: true,
+      endpoint: 'https://models.example/v1',
+      model: 'remote-model',
+      requestTimeoutMs: 30_000,
+      maximumOutputTokens: 512,
+      temperature: 0.2
+    }
+    await api.updateGenerationServerSettings(generationSettings)
+    expect(invoke).toHaveBeenCalledWith(
+      ipcChannels.updateGenerationServerSettings,
+      generationSettings
+    )
     await api.askQuestion({ requestId: 'request-1', question: 'Question' })
     expect(invoke).toHaveBeenCalledWith(ipcChannels.askQuestion, {
       requestId: 'request-1',

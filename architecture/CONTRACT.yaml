@@ -86,6 +86,8 @@ security_constraints:
   - Ingestion commits revalidate generation freshness and active-root membership in the same
     serialization boundary as the database mutation; deletion cannot be undone by stale work.
   - Provider credentials never cross IPC or enter renderer state or routine logs.
+  - Remote generation remains disabled by default and visibly discloses that questions and selected
+    evidence leave the device; remote HTTP additionally warns that transport is unencrypted.
   - Retrieved content is untrusted evidence and never gains tool authority.
 data_ownership:
   settings:
@@ -102,3 +104,4 @@ related_decisions:
   - architecture/decisions/ADR-002-main-process-rag-boundary.md
   - architecture/decisions/ADR-003-officeparser-document-extraction.md
   - architecture/decisions/ADR-004-user-managed-local-generation-server.md
+  - architecture/decisions/ADR-005-user-managed-remote-generation-server.md

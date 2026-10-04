@@ -9,6 +9,20 @@ export interface ChatRequestState {
 
 export const idleChatRequest: ChatRequestState = { phase: 'idle' }
 
+export type GenerationEndpointPrivacy =
+  'loopback' | 'remote-encrypted' | 'remote-unencrypted' | 'invalid'
+
+export function generationEndpointPrivacy(endpoint: string): GenerationEndpointPrivacy {
+  try {
+    const url = new URL(endpoint)
+    const hostname = url.hostname.toLocaleLowerCase()
+    if (['localhost', '127.0.0.1', '[::1]'].includes(hostname)) return 'loopback'
+    return url.protocol === 'https:' ? 'remote-encrypted' : 'remote-unencrypted'
+  } catch {
+    return 'invalid'
+  }
+}
+
 export function beginChatRequest(requestId: string): ChatRequestState {
   return { phase: 'answering', requestId }
 }

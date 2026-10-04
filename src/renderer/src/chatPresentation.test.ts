@@ -3,11 +3,19 @@ import {
   beginChatRequest,
   cancelChatRequest,
   completeChatRequest,
+  generationEndpointPrivacy,
   idleChatRequest,
   messageForAnswer
 } from './chatPresentation'
 
 describe('chat presentation state', () => {
+  it('classifies loopback, encrypted remote, and unencrypted remote endpoints', () => {
+    expect(generationEndpointPrivacy('http://127.0.0.1:11434/v1')).toBe('loopback')
+    expect(generationEndpointPrivacy('https://models.example/v1')).toBe('remote-encrypted')
+    expect(generationEndpointPrivacy('http://192.168.1.20:8080/v1')).toBe('remote-unencrypted')
+    expect(generationEndpointPrivacy('not a URL')).toBe('invalid')
+  })
+
   it('tracks answering, cancelling, and completion deterministically', () => {
     const answering = beginChatRequest('request-1')
     expect(answering).toEqual({ phase: 'answering', requestId: 'request-1' })

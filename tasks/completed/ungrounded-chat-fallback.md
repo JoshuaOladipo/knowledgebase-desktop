@@ -7,7 +7,7 @@ Status: Verified
 Status: Verified
 
 Purpose:
-Allow the configured local model to answer from general model knowledge when retrieval produces no
+Allow the configured model to answer from general model knowledge when retrieval produces no
 usable evidence, while making the lack of document grounding explicit and durable in conversation
 history.
 
@@ -28,8 +28,8 @@ Acceptance criteria:
 Architecture impact:
 
 - Uses the existing `ai`, `database`, `electron-main`, `shared-contracts`, and `renderer` boundaries.
-- Uses the already approved user-managed local generation server; no new external dependency or
-  protected architecture decision is introduced.
+- Uses the approved user-managed generation server. ADR-005 subsequently generalized its endpoint
+  boundary to include remote servers.
 
 Implementation:
 

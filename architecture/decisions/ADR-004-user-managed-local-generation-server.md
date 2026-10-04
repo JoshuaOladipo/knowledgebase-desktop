@@ -1,6 +1,6 @@
 # ADR-004: User-managed local generation server
 
-Status: Approved
+Status: Superseded by ADR-005
 
 ## Context
 

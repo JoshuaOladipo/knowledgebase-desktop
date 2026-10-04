@@ -5,7 +5,7 @@ import type {
   AskQuestionResult,
   ChatCitation,
   ConversationDetails,
-  LocalGenerationSettings
+  GenerationServerSettings
 } from '../shared/contracts'
 import { ipcChannels } from '../shared/contracts'
 import type { EmbeddingProvider } from './ai/embeddingProvider'
@@ -15,7 +15,7 @@ import {
   type GroundedAnswerRequest,
   type GroundedCitation
 } from './ai/groundedAnswerService'
-import { LocalServerGenerationProvider } from './ai/providers/localServerGenerationProvider'
+import { OpenAiCompatibleGenerationProvider } from './ai/providers/openAiCompatibleGenerationProvider'
 import { ConversationRepository } from './database/conversationRepository'
 import { TursoVectorRetriever } from './database/vectorRetriever'
 import { assertTrustedSender } from './ipc'
@@ -26,10 +26,10 @@ export interface ChatIpcDependencies {
   embeddings: EmbeddingProvider
   trustedRendererUrl: string
   watchedRoots: () => string[]
-  loadGenerationSettings: () => Promise<LocalGenerationSettings>
-  saveGenerationSettings: (settings: LocalGenerationSettings) => Promise<LocalGenerationSettings>
+  loadGenerationSettings: () => Promise<GenerationServerSettings>
+  saveGenerationSettings: (settings: GenerationServerSettings) => Promise<GenerationServerSettings>
   metrics?: OperationMetricRecorder
-  createAnswerService?: (settings: LocalGenerationSettings) => {
+  createAnswerService?: (settings: GenerationServerSettings) => {
     answer(request: GroundedAnswerRequest): Promise<GroundedAnswer>
   }
 }
@@ -88,16 +88,16 @@ export function registerChatIpcHandlers(
   const trusted = (event: IpcMainInvokeEvent): void =>
     assertTrustedSender(event, dependencies.trustedRendererUrl)
 
-  ipc.handle(ipcChannels.getLocalGenerationSettings, async (event, ...args) => {
+  ipc.handle(ipcChannels.getGenerationServerSettings, async (event, ...args) => {
     trusted(event)
     if (args.length !== 0) throw new Error('Generation settings do not accept arguments.')
     return dependencies.loadGenerationSettings()
   })
 
-  ipc.handle(ipcChannels.updateLocalGenerationSettings, async (event, ...args) => {
+  ipc.handle(ipcChannels.updateGenerationServerSettings, async (event, ...args) => {
     trusted(event)
     if (args.length !== 1) throw new Error('Generation settings update requires one object.')
-    return dependencies.saveGenerationSettings(args[0] as LocalGenerationSettings)
+    return dependencies.saveGenerationSettings(args[0] as GenerationServerSettings)
   })
 
   ipc.handle(ipcChannels.askQuestion, async (event, ...args): Promise<AskQuestionResult> => {
@@ -109,7 +109,7 @@ export function registerChatIpcHandlers(
       throw new Error('Conversation does not exist.')
     }
     const settings = await dependencies.loadGenerationSettings()
-    if (!settings.enabled) throw new Error('Enable the local generation server in Settings first.')
+    if (!settings.enabled) throw new Error('Enable the generation server in Settings first.')
     const controller = new AbortController()
     activeRequests.set(request.requestId, controller)
     try {
@@ -118,7 +118,7 @@ export function registerChatIpcHandlers(
         : new GroundedAnswerService(
             dependencies.embeddings,
             retriever,
-            new LocalServerGenerationProvider(settings),
+            new OpenAiCompatibleGenerationProvider(settings),
             dependencies.metrics
           )
       const watchedRoots = dependencies.watchedRoots()

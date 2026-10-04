@@ -1,4 +1,4 @@
-import type { LocalGenerationSettings } from '../../../shared/contracts'
+import type { GenerationServerSettings } from '../../../shared/contracts'
 import type { GenerationProvider, GenerationRequest, GenerationResult } from '../generationProvider'
 
 type FetchImplementation = typeof fetch
@@ -16,12 +16,12 @@ async function readBoundedResponse(
   const declaredLength = Number(response.headers.get('content-length'))
   if (Number.isFinite(declaredLength) && declaredLength > MAXIMUM_RESPONSE_BYTES) {
     controller.abort()
-    throw Object.assign(new Error('Local generation server response is too large.'), {
+    throw Object.assign(new Error('Generation server response is too large.'), {
       invalidResponse: true
     })
   }
   if (!response.body) {
-    throw Object.assign(new Error('Local generation server returned no response body.'), {
+    throw Object.assign(new Error('Generation server returned no response body.'), {
       invalidResponse: true
     })
   }
@@ -35,7 +35,7 @@ async function readBoundedResponse(
       total += value.byteLength
       if (total > MAXIMUM_RESPONSE_BYTES) {
         controller.abort()
-        throw Object.assign(new Error('Local generation server response is too large.'), {
+        throw Object.assign(new Error('Generation server response is too large.'), {
           invalidResponse: true
         })
       }
@@ -53,15 +53,15 @@ async function readBoundedResponse(
   try {
     return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)) as unknown
   } catch {
-    throw Object.assign(new Error('Local generation server returned malformed JSON.'), {
+    throw Object.assign(new Error('Generation server returned malformed JSON.'), {
       invalidResponse: true
     })
   }
 }
 
-export function validateLocalGenerationSettings(value: unknown): LocalGenerationSettings {
+export function validateGenerationServerSettings(value: unknown): GenerationServerSettings {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new Error('Local generation settings must be an object.')
+    throw new Error('Generation server settings must be an object.')
   }
   const input = value as Record<string, unknown>
   const known = new Set([
@@ -73,28 +73,26 @@ export function validateLocalGenerationSettings(value: unknown): LocalGeneration
     'temperature'
   ])
   if (Object.keys(input).some((key) => !known.has(key))) {
-    throw new Error('Local generation settings contain an unknown field.')
+    throw new Error('Generation server settings contain an unknown field.')
   }
   if (typeof input.enabled !== 'boolean') throw new Error('Enabled must be a boolean.')
   if (typeof input.endpoint !== 'string' || input.endpoint.length > 2_048) {
-    throw new Error('Endpoint must be a valid loopback URL.')
+    throw new Error('Endpoint must be a valid HTTP(S) URL.')
   }
   let endpoint: URL
   try {
     endpoint = new URL(input.endpoint)
   } catch {
-    throw new Error('Endpoint must be a valid loopback URL.')
+    throw new Error('Endpoint must be a valid HTTP(S) URL.')
   }
-  const hostname = endpoint.hostname.toLocaleLowerCase()
   if (
     (endpoint.protocol !== 'http:' && endpoint.protocol !== 'https:') ||
-    !['localhost', '127.0.0.1', '[::1]', '192.168.8.106'].includes(hostname) ||
     endpoint.username !== '' ||
     endpoint.password !== '' ||
     endpoint.search !== '' ||
     endpoint.hash !== ''
   ) {
-    throw new Error('Endpoint must use HTTP(S) on localhost, 127.0.0.1, or [::1].')
+    throw new Error('Endpoint must use HTTP(S) without credentials, a query, or a fragment.')
   }
   const normalizedEndpoint = endpoint.href.replace(/\/$/, '')
   if (
@@ -145,12 +143,12 @@ function parseResult(content: string, allowedSourceIds: Set<string>): Generation
   try {
     parsed = JSON.parse(candidate)
   } catch {
-    throw Object.assign(new Error('Local generation server returned malformed JSON.'), {
+    throw Object.assign(new Error('Generation server returned malformed JSON.'), {
       invalidResponse: true
     })
   }
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    throw Object.assign(new Error('Local generation server returned an invalid result.'), {
+    throw Object.assign(new Error('Generation server returned an invalid result.'), {
       invalidResponse: true
     })
   }
@@ -162,7 +160,7 @@ function parseResult(content: string, allowedSourceIds: Set<string>): Generation
     !Array.isArray(result.citations) ||
     result.citations.some((sourceId) => typeof sourceId !== 'string')
   ) {
-    throw Object.assign(new Error('Local generation server returned an invalid result.'), {
+    throw Object.assign(new Error('Generation server returned an invalid result.'), {
       invalidResponse: true
     })
   }
@@ -174,17 +172,17 @@ function parseResult(content: string, allowedSourceIds: Set<string>): Generation
   }
 }
 
-/** Calls a user-managed, loopback-only OpenAI-compatible chat-completions server. */
-export class LocalServerGenerationProvider implements GenerationProvider {
-  readonly id = 'local-openai-compatible'
+/** Calls a user-managed OpenAI-compatible chat-completions server. */
+export class OpenAiCompatibleGenerationProvider implements GenerationProvider {
+  readonly id = 'openai-compatible'
   readonly model: string
 
   constructor(
-    private readonly settings: LocalGenerationSettings,
+    private readonly settings: GenerationServerSettings,
     private readonly fetchImplementation: FetchImplementation = fetch
   ) {
-    this.settings = validateLocalGenerationSettings(settings)
-    if (!this.settings.enabled) throw new Error('Local generation is not enabled.')
+    this.settings = validateGenerationServerSettings(settings)
+    if (!this.settings.enabled) throw new Error('Generation server is not enabled.')
     this.model = this.settings.model
   }
 
@@ -239,20 +237,20 @@ export class LocalServerGenerationProvider implements GenerationProvider {
         }
       )
       if (!response.ok)
-        throw Object.assign(new Error('Local generation request failed.'), {
+        throw Object.assign(new Error('Generation request failed.'), {
           status: response.status
         })
       const payload = (await readBoundedResponse(response, controller)) as ChatCompletionResponse
       const content = payload.choices?.[0]?.message?.content
       if (typeof content !== 'string') {
-        throw Object.assign(new Error('Local generation server returned no message.'), {
+        throw Object.assign(new Error('Generation server returned no message.'), {
           invalidResponse: true
         })
       }
       return parseResult(content, new Set(request.allowedSourceIds))
     } catch (error) {
       if (timedOut)
-        throw Object.assign(new Error('Local generation request timed out.'), { unavailable: true })
+        throw Object.assign(new Error('Generation request timed out.'), { unavailable: true })
       throw error
     } finally {
       clearTimeout(timeout)

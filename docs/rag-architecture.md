@@ -13,7 +13,8 @@ foundations of the RAG system:
 - Exact compatible-vector retrieval and bounded evidence selection.
 - Provider-neutral generation with structured citations for document-grounded answers and an
   explicitly labeled model-knowledge fallback when no usable evidence remains.
-- A loopback-only OpenAI-compatible generation provider with persistent bounded settings.
+- A user-configured local or remote OpenAI-compatible generation provider with persistent bounded
+  settings and explicit remote-data disclosure.
 - Typed ask, cancel, settings, conversation read/list/delete IPC and a chat UI that displays grounding.
 - Durable conversations, messages, grounding classifications, and immutable citation snapshots
   retained until explicit deletion.
@@ -62,8 +63,8 @@ flowchart LR
     RAG --> EP
     RAG --> RET[TursoVectorRetriever]
     RET --> DB
-    RAG --> GP[Loopback GenerationProvider]
-    GP --> LS[User-managed local server]
+    RAG --> GP[OpenAI-compatible GenerationProvider]
+    GP --> LS[User-managed local or remote server]
     RAG -->|answer and sources| MAIN
     MAIN --> PL
     PL --> UI
@@ -176,9 +177,10 @@ citation history does not change when a source is later re-indexed.
 10. Atomically persist the answer, grounding classification, and exact evidence; return structured
     citations only for evidence-backed answers.
 
-Steps 1–10 are composed at runtime with the approved user-managed local server provider. Generation
-is disabled by default and can only target HTTP(S) on `localhost`, `127.0.0.1`, or `[::1]`. Requests
-are non-streaming, bounded, cancellable, credential-free, and reject redirects.
+Steps 1–10 are composed at runtime with the approved user-managed generation server provider.
+Generation is disabled by default and can target a user-configured HTTP(S) base URL. Remote endpoints
+receive questions and selected evidence; the UI discloses this and warns when remote HTTP is
+unencrypted. Requests are non-streaming, bounded, cancellable, credential-free, and reject redirects.
 The provider requests a strict JSON schema requiring an answer and citation array, validates the
 returned shape again locally, and reports invalid responses separately from server availability
 failures.
@@ -190,7 +192,7 @@ indexes can be introduced without changing the renderer contract.
 
 Implemented preload operations remain task-oriented:
 
-- Read and update bounded local generation settings.
+- Read and update bounded generation-server settings.
 - Ask and cancel a question using an opaque request identifier.
 - Read, list, and delete conversations.
 - Read aggregate and per-document index state.
@@ -220,7 +222,8 @@ is disabled and there is no remote transmission path.
 - Use embedded Turso for local durable state; see ADR-001.
 - Keep privileged RAG capabilities in the main process; see ADR-002.
 - Use a constrained OfficeParser adapter for structured formats; see ADR-003.
-- Use a user-managed loopback OpenAI-compatible generation server; see ADR-004.
+- Allow a user-managed local or remote OpenAI-compatible generation server; see ADR-005, which
+  supersedes ADR-004.
 - Keep watcher and ingestion responsibilities separate.
 - Replace chunks atomically so failed indexing preserves the previous valid index.
 - Treat canonical containment and commit freshness as database-ingestion invariants, not best-effort

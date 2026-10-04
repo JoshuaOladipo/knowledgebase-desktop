@@ -11,9 +11,9 @@ import { createEmbeddingProvider } from './config/aiSettings'
 import { IngestionCoordinator } from './ingestion/ingestionCoordinator'
 import { installNavigationPolicy, registerWatcherIpcHandlers } from './ipc'
 import {
-  loadLocalGenerationSettings,
+  loadGenerationServerSettings,
   loadWatchedFolders,
-  saveLocalGenerationSettings,
+  saveGenerationServerSettings,
   saveWatchedFolders
 } from './settings'
 import { registerChatIpcHandlers } from './chatIpc'
@@ -107,8 +107,8 @@ function registerIpcHandlers(
     embeddings,
     trustedRendererUrl: rendererUrl(),
     watchedRoots: () => watcherService.getState().folders,
-    loadGenerationSettings: () => loadLocalGenerationSettings(settingsPath()),
-    saveGenerationSettings: (settings) => saveLocalGenerationSettings(settingsPath(), settings),
+    loadGenerationSettings: () => loadGenerationServerSettings(settingsPath()),
+    saveGenerationSettings: (settings) => saveGenerationServerSettings(settingsPath(), settings),
     metrics: diagnostics
   })
   registerIndexIpcHandlers(ipcMain, {

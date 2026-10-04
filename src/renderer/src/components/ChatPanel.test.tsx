@@ -12,9 +12,28 @@ afterEach(() => {
 })
 
 describe('ChatPanel', () => {
+  it('discloses remote evidence transfer and unencrypted HTTP transport', async () => {
+    window.pcAgent = {
+      getGenerationServerSettings: vi.fn().mockResolvedValue({
+        enabled: false,
+        endpoint: 'http://192.168.1.20:8080/v1',
+        model: 'remote-model',
+        requestTimeoutMs: 30_000,
+        maximumOutputTokens: 512,
+        temperature: 0.2
+      }),
+      listConversations: vi.fn().mockResolvedValue([])
+    } as unknown as PcAgentApi
+    render(<ChatPanel />)
+
+    const warning = await screen.findByRole('note')
+    expect(warning.textContent).toContain('selected document excerpts')
+    expect(warning.textContent).toContain('not encrypted in transit')
+  })
+
   it('clearly labels a model-knowledge answer as ungrounded', async () => {
     window.pcAgent = {
-      getLocalGenerationSettings: vi.fn().mockResolvedValue({
+      getGenerationServerSettings: vi.fn().mockResolvedValue({
         enabled: true,
         endpoint: 'http://127.0.0.1:11434/v1',
         model: 'local-model',

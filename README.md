@@ -16,13 +16,18 @@ indexes supported documents into a local knowledge-base database.
 - Recover the local index after restarts by reconciling it with active watched folders.
 - Retrieve compatible chunks with exact cosine distance and select bounded, non-overlapping evidence.
 - Persist local conversations and immutable citation snapshots until explicit deletion.
-- Ask grounded questions through a user-managed loopback OpenAI-compatible generation server.
+- Ask questions through a user-managed local or remote OpenAI-compatible generation server.
 - Inspect live indexing stages, retry/re-index documents, and view/export privacy-safe local metrics.
 
-The generation server is disabled by default. In **Local model server settings**, enter a loopback
-base URL such as `http://127.0.0.1:11434/v1`, enter the server's model name, enable it, and save. The
-server must implement `POST /chat/completions`; PC Agent sends no API key and rejects remote hosts,
-URL credentials, query strings, fragments, and redirects.
+The generation server is disabled by default. In **Generation server settings**, enter an HTTP(S)
+base URL such as `http://127.0.0.1:11434/v1` or `https://models.example/v1`, enter the server's model
+name, enable it, and save. The server must implement `POST /chat/completions` and strict JSON-schema
+response formatting. PC Agent sends no API key and rejects URL credentials, query strings, fragments,
+and redirects.
+
+Remote generation sends the question and selected indexed document excerpts to the configured
+server. PC Agent displays this disclosure in Settings and warns when a remote endpoint uses
+unencrypted HTTP. HTTPS is strongly recommended outside the local machine.
 
 ## Architecture
 
@@ -30,7 +35,7 @@ URL credentials, query strings, fragments, and redirects.
 - `src/main/database` owns the embedded Turso connection, migrations, and transactional repositories.
 - `src/main/ingestion` owns file policy, extraction, chunking, deduplication, and reconciliation.
 - `src/main/ai` owns provider-neutral AI contracts, the local baseline embedding provider, and the
-  loopback generation adapter.
+  user-configured generation adapter.
 - `src/preload` exposes only the typed `PcAgentApi` bridge through context isolation.
 - `src/shared/contracts.ts` defines serializable IPC requests, events, and state.
 - `src/renderer` owns React presentation, file state, filtering, selection, and chat history views.

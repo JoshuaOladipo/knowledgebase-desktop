@@ -23,7 +23,7 @@ export interface WatcherState {
   error?: string
 }
 
-export interface LocalGenerationSettings {
+export interface GenerationServerSettings {
   enabled: boolean
   endpoint: string
   model: string
@@ -137,11 +137,13 @@ export interface PcAgentApi {
   onFileEvent(listener: (event: FileEvent) => void): () => void
   /** Subscribes to watcher lifecycle changes and returns an unsubscribe function. */
   onWatcherState(listener: (state: WatcherState) => void): () => void
-  /** Returns the user-managed local generation server configuration. */
-  getLocalGenerationSettings(): Promise<LocalGenerationSettings>
-  /** Validates and persists the local generation server configuration. */
-  updateLocalGenerationSettings(settings: LocalGenerationSettings): Promise<LocalGenerationSettings>
-  /** Retrieves local evidence and asks the configured local server to answer. */
+  /** Returns the user-managed generation server configuration. */
+  getGenerationServerSettings(): Promise<GenerationServerSettings>
+  /** Validates and persists the generation server configuration. */
+  updateGenerationServerSettings(
+    settings: GenerationServerSettings
+  ): Promise<GenerationServerSettings>
+  /** Retrieves local evidence and asks the configured generation server to answer. */
   askQuestion(request: AskQuestionRequest): Promise<AskQuestionResult>
   /** Cancels an in-flight question owned by this renderer. */
   cancelQuestion(requestId: string): Promise<void>
@@ -173,8 +175,8 @@ export const ipcChannels = {
   getWatchedFiles: 'watcher:files:get',
   fileEvent: 'watcher:file-event',
   watcherState: 'watcher:state',
-  getLocalGenerationSettings: 'generation:settings:get',
-  updateLocalGenerationSettings: 'generation:settings:update',
+  getGenerationServerSettings: 'generation:settings:get',
+  updateGenerationServerSettings: 'generation:settings:update',
   askQuestion: 'chat:ask',
   cancelQuestion: 'chat:cancel',
   listConversations: 'chat:conversations:list',

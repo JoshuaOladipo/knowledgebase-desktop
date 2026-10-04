@@ -9,7 +9,7 @@ import type {
   FileEvent,
   IndexDocumentPhase,
   IndexStatus,
-  LocalGenerationSettings,
+  GenerationServerSettings,
   PcAgentApi,
   WatcherState
 } from '../../shared/contracts'
@@ -25,7 +25,7 @@ const file: FileEntry = {
 }
 
 const idleWatcher: WatcherState = { folders: [], phase: 'idle' }
-const settings: LocalGenerationSettings = {
+const settings: GenerationServerSettings = {
   enabled: false,
   endpoint: 'http://127.0.0.1:1234/v1',
   model: 'local-model',
@@ -83,8 +83,8 @@ function createApi(overrides: Partial<PcAgentApi> = {}): ApiHarness {
       }
     }),
     onWatcherState: vi.fn(() => () => undefined),
-    getLocalGenerationSettings: vi.fn().mockResolvedValue(settings),
-    updateLocalGenerationSettings: vi.fn().mockResolvedValue(settings),
+    getGenerationServerSettings: vi.fn().mockResolvedValue(settings),
+    updateGenerationServerSettings: vi.fn().mockResolvedValue(settings),
     askQuestion: vi.fn(),
     cancelQuestion: vi.fn().mockResolvedValue(undefined),
     listConversations: vi.fn().mockResolvedValue([]),

@@ -33,13 +33,17 @@ provider capability.
 
 ## Local and cloud data
 
-The hash embedding provider and embedded Turso database operate locally. Generation may be sent only
-to a user-enabled HTTP(S) loopback endpoint on `localhost`, `127.0.0.1`, or `[::1]`. The adapter sends
-no credentials, accepts no arbitrary headers, rejects URL credentials/query/fragment data and
-redirects, and bounds timeout/output settings. A future cloud provider may receive questions and
-extracted source text; it must disclose that behavior before activation and store provider credentials
-through operating-system credential storage. Credentials must never be stored in `settings.json`, the
-knowledge-base database, renderer state, or ordinary logs.
+The hash embedding provider and embedded Turso database operate locally. Generation is disabled by
+default and may be sent to a user-configured HTTP(S) endpoint. A remote server receives each question
+and the selected document excerpts used as evidence. The UI discloses that transfer and warns when a
+remote endpoint uses unencrypted HTTP; HTTPS is strongly recommended outside the local machine.
+
+The adapter sends no credentials, accepts no arbitrary headers, rejects URL
+credentials/query/fragment data and redirects, and bounds timeout, output, and response size. The
+remote operator's access, retention, training, and jurisdiction policies are outside PC Agent's
+control. Authenticated providers remain unsupported until credentials can be stored through operating-
+system credential storage. Credentials must never be stored in `settings.json`, the knowledge-base
+database, renderer state, or ordinary logs.
 
 Cloud database synchronization is not currently enabled and must not be introduced silently.
 

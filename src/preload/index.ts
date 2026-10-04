@@ -8,9 +8,9 @@ const api: PcAgentApi = {
   stopWatching: () => ipcRenderer.invoke(ipcChannels.stopWatching),
   getWatcherState: () => ipcRenderer.invoke(ipcChannels.getWatcherState),
   getWatchedFiles: () => ipcRenderer.invoke(ipcChannels.getWatchedFiles),
-  getLocalGenerationSettings: () => ipcRenderer.invoke(ipcChannels.getLocalGenerationSettings),
-  updateLocalGenerationSettings: (settings) =>
-    ipcRenderer.invoke(ipcChannels.updateLocalGenerationSettings, settings),
+  getGenerationServerSettings: () => ipcRenderer.invoke(ipcChannels.getGenerationServerSettings),
+  updateGenerationServerSettings: (settings) =>
+    ipcRenderer.invoke(ipcChannels.updateGenerationServerSettings, settings),
   askQuestion: (request) => ipcRenderer.invoke(ipcChannels.askQuestion, request),
   cancelQuestion: (requestId) => ipcRenderer.invoke(ipcChannels.cancelQuestion, requestId),
   listConversations: () => ipcRenderer.invoke(ipcChannels.listConversations),

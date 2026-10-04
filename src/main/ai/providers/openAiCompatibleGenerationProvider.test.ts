@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { LocalGenerationSettings } from '../../../shared/contracts'
+import type { GenerationServerSettings } from '../../../shared/contracts'
 import {
-  LocalServerGenerationProvider,
-  validateLocalGenerationSettings
-} from './localServerGenerationProvider'
+  OpenAiCompatibleGenerationProvider,
+  validateGenerationServerSettings
+} from './openAiCompatibleGenerationProvider'
 
-const settings: LocalGenerationSettings = {
+const settings: GenerationServerSettings = {
   enabled: true,
   endpoint: 'http://127.0.0.1:11434/v1',
   model: 'local-model',
@@ -14,19 +14,26 @@ const settings: LocalGenerationSettings = {
   temperature: 0.1
 }
 
-describe('LocalServerGenerationProvider', () => {
-  it('accepts only bounded loopback configuration', () => {
-    expect(validateLocalGenerationSettings(settings)).toEqual(settings)
+describe('OpenAiCompatibleGenerationProvider', () => {
+  it('accepts bounded HTTP(S) endpoints without a host allowlist', () => {
+    expect(validateGenerationServerSettings(settings)).toEqual(settings)
+    expect(
+      validateGenerationServerSettings({ ...settings, endpoint: 'https://models.example/v1/' })
+        .endpoint
+    ).toBe('https://models.example/v1')
+    expect(
+      validateGenerationServerSettings({ ...settings, endpoint: 'http://192.168.1.2:8080/v1' })
+        .endpoint
+    ).toBe('http://192.168.1.2:8080/v1')
     for (const endpoint of [
-      'https://example.com/v1',
-      'http://192.168.1.2/v1',
       'file:///tmp/model',
       'http://user:secret@localhost/v1',
-      'http://localhost/v1?token=secret'
+      'http://localhost/v1?token=secret',
+      'https://models.example/v1#fragment'
     ]) {
-      expect(() => validateLocalGenerationSettings({ ...settings, endpoint })).toThrow('Endpoint')
+      expect(() => validateGenerationServerSettings({ ...settings, endpoint })).toThrow('Endpoint')
     }
-    expect(() => validateLocalGenerationSettings({ ...settings, extra: true })).toThrow(
+    expect(() => validateGenerationServerSettings({ ...settings, extra: true })).toThrow(
       'unknown field'
     )
   })
@@ -51,7 +58,7 @@ describe('LocalServerGenerationProvider', () => {
         )
       }
     )
-    const provider = new LocalServerGenerationProvider(settings, fetchImplementation)
+    const provider = new OpenAiCompatibleGenerationProvider(settings, fetchImplementation)
     await expect(
       provider.generate({
         systemInstruction: 'Use evidence only.',
@@ -87,7 +94,7 @@ describe('LocalServerGenerationProvider', () => {
   })
 
   it('rejects malformed responses and supports cancellation', async () => {
-    const malformed = new LocalServerGenerationProvider(
+    const malformed = new OpenAiCompatibleGenerationProvider(
       settings,
       vi.fn(
         async () =>
@@ -100,7 +107,7 @@ describe('LocalServerGenerationProvider', () => {
       malformed.generate({ systemInstruction: 'System', prompt: 'Prompt', allowedSourceIds: [] })
     ).rejects.toMatchObject({ invalidResponse: true })
 
-    const oversized = new LocalServerGenerationProvider(
+    const oversized = new OpenAiCompatibleGenerationProvider(
       settings,
       vi.fn(
         async () =>
@@ -115,7 +122,7 @@ describe('LocalServerGenerationProvider', () => {
     ).rejects.toThrow('too large')
 
     const controller = new AbortController()
-    const cancelled = new LocalServerGenerationProvider(
+    const cancelled = new OpenAiCompatibleGenerationProvider(
       settings,
       vi.fn(
         (_url, init) =>
@@ -135,7 +142,7 @@ describe('LocalServerGenerationProvider', () => {
   })
 
   it('classifies non-success status without retaining response content', async () => {
-    const provider = new LocalServerGenerationProvider(
+    const provider = new OpenAiCompatibleGenerationProvider(
       settings,
       vi.fn(async () => new Response('sensitive server response', { status: 503 }))
     )

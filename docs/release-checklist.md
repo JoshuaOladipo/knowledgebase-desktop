@@ -45,6 +45,8 @@ For every supported operating system:
 - [ ] Confirm parser and PDF runtime assets work from the packaged ASAR layout.
 - [ ] Confirm indexing cancellation and graceful shutdown leave no partial document replacement.
 - [ ] Verify grounded retrieval/citations, labeled ungrounded fallback, and cancellation.
+- [ ] Verify remote-generation disclosure, HTTPS operation, unencrypted-HTTP warning, and redirect
+      rejection.
 
 ## Native dependency checks
 

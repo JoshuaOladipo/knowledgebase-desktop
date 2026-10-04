@@ -19,12 +19,13 @@ Acceptance criteria:
 
 Architecture impact:
 
-- No boundary or dependency change; this tightens the existing local generation request contract.
+- No boundary or dependency change at implementation time; this tightened the generation request
+  contract later generalized by ADR-005.
 
 Implementation:
 
-- `LocalServerGenerationProvider.generate` at
-  `src/main/ai/providers/localServerGenerationProvider.ts:191-262` now sends strict JSON-schema
+- `OpenAiCompatibleGenerationProvider.generate` in
+  `src/main/ai/providers/openAiCompatibleGenerationProvider.ts` sends strict JSON-schema
   response formatting. The schema requires a non-empty `answer`, a string-array `citations`, and no
   additional properties.
 - Existing bounded envelope parsing, local result validation, citation allowlisting, timeouts, and
@@ -33,7 +34,7 @@ Implementation:
 
 Tests:
 
-- `src/main/ai/providers/localServerGenerationProvider.test.ts:34-135` asserts the exact structured
+- `src/main/ai/providers/openAiCompatibleGenerationProvider.test.ts` asserts the exact structured
   request, response validation, citation filtering, bounds, cancellation, and sanitized HTTP errors.
 
 Verification:

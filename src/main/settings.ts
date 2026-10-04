@@ -1,18 +1,20 @@
 import { readFile, rename, writeFile } from 'node:fs/promises'
-import type { LocalGenerationSettings } from '../shared/contracts'
-import { validateLocalGenerationSettings } from './ai/providers/localServerGenerationProvider'
+import type { GenerationServerSettings } from '../shared/contracts'
+import { validateGenerationServerSettings } from './ai/providers/openAiCompatibleGenerationProvider'
 
 interface ApplicationSettingsFile {
   watchedFolders?: unknown
+  generationServer?: unknown
+  /** Legacy key retained only for a one-way settings migration. */
   localGeneration?: unknown
 }
 
 const pendingWrites = new Map<string, Promise<void>>()
 
-export const defaultLocalGenerationSettings: LocalGenerationSettings = {
+export const defaultGenerationServerSettings: GenerationServerSettings = {
   enabled: false,
   endpoint: 'http://127.0.0.1:11434/v1',
-  model: 'local-model',
+  model: 'model',
   requestTimeoutMs: 120_000,
   maximumOutputTokens: 1_024,
   temperature: 0.1
@@ -68,20 +70,38 @@ export async function saveWatchedFolders(path: string, folders: string[]): Promi
   await updateSettingsFile(path, (settings) => ({ ...settings, watchedFolders: folders }))
 }
 
-export async function loadLocalGenerationSettings(path: string): Promise<LocalGenerationSettings> {
+export async function loadGenerationServerSettings(
+  path: string
+): Promise<GenerationServerSettings> {
   const settings = await loadSettingsFile(path)
+  let validated: GenerationServerSettings
   try {
-    return validateLocalGenerationSettings(settings.localGeneration)
+    validated = validateGenerationServerSettings(
+      settings.generationServer ?? settings.localGeneration
+    )
   } catch {
-    return defaultLocalGenerationSettings
+    return defaultGenerationServerSettings
   }
+  if (settings.generationServer === undefined && settings.localGeneration !== undefined) {
+    await updateSettingsFile(path, (current) => {
+      if (current.generationServer !== undefined) return current
+      const migrated = { ...current, generationServer: validated }
+      delete migrated.localGeneration
+      return migrated
+    })
+  }
+  return validated
 }
 
-export async function saveLocalGenerationSettings(
+export async function saveGenerationServerSettings(
   path: string,
-  settings: LocalGenerationSettings
-): Promise<LocalGenerationSettings> {
-  const validated = validateLocalGenerationSettings(settings)
-  await updateSettingsFile(path, (current) => ({ ...current, localGeneration: validated }))
+  settings: GenerationServerSettings
+): Promise<GenerationServerSettings> {
+  const validated = validateGenerationServerSettings(settings)
+  await updateSettingsFile(path, (current) => {
+    const migrated = { ...current, generationServer: validated }
+    delete migrated.localGeneration
+    return migrated
+  })
   return validated
 }

@@ -20,12 +20,13 @@ Acceptance criteria:
 
 Architecture impact:
 
-- No boundary or dependency change; this hardens the existing approved local generation provider.
+- No boundary or dependency change at implementation time; this hardened the generation provider
+  later generalized by ADR-005.
 
 Implementation:
 
-- `LocalServerGenerationProvider` in
-  `src/main/ai/providers/localServerGenerationProvider.ts:12-60,139-175,191-246` requests
+- `OpenAiCompatibleGenerationProvider` in
+  `src/main/ai/providers/openAiCompatibleGenerationProvider.ts` requests
   `response_format: { type: 'json_object' }`, preserves bounded parsing and citation filtering, and
   marks malformed, missing, invalid, or oversized responses as invalid provider output.
 - `classifyGenerationError` in `src/main/ai/generationProvider.ts:18-53` exposes the sanitized
@@ -34,7 +35,7 @@ Implementation:
 
 Tests:
 
-- `src/main/ai/providers/localServerGenerationProvider.test.ts:34-125` verifies JSON mode is sent,
+- `src/main/ai/providers/openAiCompatibleGenerationProvider.test.ts` verifies JSON mode is sent,
   citations remain allowlisted, malformed output is rejected, response bounds remain enforced, and
   cancellation still works.
 - `src/main/ai/groundedAnswerService.test.ts:129-160` verifies sanitized unavailable and
