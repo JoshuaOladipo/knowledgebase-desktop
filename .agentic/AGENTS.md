@@ -3,6 +3,7 @@
 Apply project root instructions, `architecture/CONTRACT.yaml`, and `.agentic-local/` overrides in addition to these defaults.
 
 ## Required workflow
+
 1. Use durable task records under `tasks/active/`.
 2. Planning requests do not authorize implementation.
 3. Implement only explicitly authorized task IDs.
@@ -15,5 +16,6 @@ Apply project root instructions, `architecture/CONTRACT.yaml`, and `.agentic-loc
 10. Leave a durable handoff so another agent can continue without chat history.
 
 ## Communication
+
 Before coding: authorized scope, material assumptions, blockers, architecture decisions.
 After coding: implemented/unimplemented scope, actual verification results, architecture/documentation impact, risks, and task-record path.

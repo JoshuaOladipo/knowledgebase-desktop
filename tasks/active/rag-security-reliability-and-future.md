@@ -1,6 +1,6 @@
 # Feature: RAG security, reliability, format expansion, and future evolution
 
-Status: Planning
+Status: Partially implemented — product decisions and end-to-end delivery remain
 
 ## Feature intent
 
@@ -10,9 +10,9 @@ diagnostics, recovery, additional formats, end-to-end verification, and explicit
 ## Feature acceptance criteria
 
 - [ ] Cloud provider credentials and disclosure follow the documented privacy boundary.
-- [ ] RAG settings are validated and safely bounded.
-- [ ] Recovery and end-to-end behavior are tested across interruption and restart.
-- [ ] Diagnostics provide operational value without collecting user content.
+- [x] Local generation settings are validated and safely bounded.
+- [x] Recovery and end-to-end behavior are tested across interruption and restart.
+- [x] Local diagnostics provide operational value without collecting user content.
 - [ ] Additional formats and retrieval enhancements are adopted only after evaluation.
 
 ## Architecture assessment
@@ -26,7 +26,7 @@ diagnostics, recovery, additional formats, end-to-end verification, and explicit
 
 ### RAGX-001 — Evaluate additional document formats
 
-Status: Pending
+Status: Blocked pending representative documents and retrieval evaluation criteria
 
 Purpose:
 Determine whether HTML, CSV, JSON, and source-code extraction improve the intended knowledge base.
@@ -70,7 +70,7 @@ Commit:
 
 ### RAGX-002 — Implement secure provider configuration and disclosure
 
-Status: Pending
+Status: Partially implemented — local provider complete; cloud support remains deferred
 
 Purpose:
 Allow future model configuration without leaking credentials or silently moving local content to cloud
@@ -78,17 +78,19 @@ services.
 
 Dependencies:
 
-- Selection and approval of any cloud provider.
+- ADR-004 for the selected user-managed local provider.
+- Selection and approval before adding any cloud provider.
 
 Acceptance criteria:
 
 - [ ] Store provider secrets through operating-system credential storage.
-- [ ] Never store credentials in `settings.json`, Turso, renderer state, IPC payloads, or logs.
-- [ ] Show a clear local-versus-cloud disclosure before a cloud provider is enabled.
-- [ ] Safely bound model, batch size, retrieval counts, distance threshold, context budget, file-size
+- [x] Never store credentials in `settings.json`, Turso, renderer state, IPC payloads, or logs.
+- [x] Show that the configured provider is a user-managed local server.
+- [x] Safely bound local model, timeout, output, endpoint, retrieval, context, and file-size
       limit, and enabled-format settings.
 - [ ] Detect configuration changes that require controlled re-indexing.
-- [ ] Define credential removal, provider disablement, and error recovery behavior.
+- [x] Define provider disablement and sanitized error recovery behavior for the credential-free local
+      provider.
 
 Expected verification:
 
@@ -100,15 +102,18 @@ Architecture impact:
 
 Implementation:
 
-- Only the local hash embedding configuration is implemented.
+- Local generation settings are validated and atomically persisted by the main process.
+- The loopback adapter rejects remote endpoints, URL credentials, queries, fragments, redirects,
+  oversized/malformed responses, and unbounded time/output settings.
+- `ChatPanel` labels and enables/disables the user-managed local server without accepting secrets.
 
 Tests:
 
-- Pending.
+- Provider, settings, IPC, cancellation, and deterministic fake-generation tests run without network.
 
 Verification:
 
-- Not run.
+- Included in the 66-test suite; typecheck, lint, and production build pass.
 
 Commit:
 
@@ -116,23 +121,24 @@ Commit:
 
 ### RAGX-003 — Add privacy-safe diagnostics and optional telemetry
 
-Status: Pending
+Status: Verified — local-only diagnostics; remote telemetry deliberately unavailable
 
 Purpose:
 Expose indexing and retrieval health without logging or transmitting user content.
 
 Dependencies:
 
-- Defined local diagnostics and telemetry opt-in policy.
+- Local-only policy: aggregate diagnostics remain in memory; no remote telemetry endpoint or opt-in
+  surface exists.
 
 Acceptance criteria:
 
-- [ ] Record document/chunk counts, queue depth, stage, durations, categorized failures, provider
+- [x] Record document/chunk counts, queue depth, stage, durations, categorized failures, provider
       latency, retrieval latency, and database size.
-- [ ] Exclude source text, embeddings, parser raw data, prompts, answers, filenames when unnecessary,
+- [x] Exclude source text, embeddings, parser raw data, prompts, answers, filenames when unnecessary,
       and credentials by default.
-- [ ] Keep telemetry disabled unless explicitly opted in.
-- [ ] Document retention, export, deletion, and redaction behavior.
+- [x] Keep telemetry disabled unless explicitly opted in.
+- [x] Document retention, export, deletion, and redaction behavior.
 
 Expected verification:
 
@@ -144,15 +150,24 @@ Architecture impact:
 
 Implementation:
 
-- Not implemented.
+- `LocalDiagnostics` retains aggregate operation counts, categorized outcomes, total/max durations,
+  and timestamps in memory until clear or restart; invalid operation labels are discarded.
+- Ingestion records content-free total and file-embedding timings. Grounded answering records
+  question embedding, vector retrieval, and answer-generation timings.
+- `IndexStatus` includes document/chunk counts, queue depth, stages, database bytes, and diagnostic
+  aggregates. The renderer can clear them or export redacted JSON through a native save dialog.
+- Telemetry is hard-disabled and no remote destination, identifier, content field, or transmission
+  code exists.
 
 Tests:
 
-- Not implemented.
+- `diagnostics.test.ts` verifies aggregation, clearing, invalid-label rejection, and that action
+  results/errors are not retained.
+- `indexIpc.test.ts` verifies local snapshot, clear/export, sender checks, and managed reveal controls.
 
 Verification:
 
-- Not run.
+- Included in the 94-test suite; typecheck and lint pass.
 
 Commit:
 
@@ -160,7 +175,7 @@ Commit:
 
 ### RAGX-004 — Add interruption and recovery coverage
 
-Status: Pending
+Status: Verified locally
 
 Purpose:
 Prove that failures cannot commit partial or stale document state.
@@ -172,15 +187,15 @@ Dependencies:
 
 Acceptance criteria:
 
-- [ ] Test interruption during extraction, embedding, document replacement, migration, and shutdown.
-- [ ] Test restart reconciliation after files change while the application is closed.
-- [ ] Test cancellation from deletion, folder removal, reconfiguration, newer generations, and quit.
-- [ ] Test a successful empty/non-indexable replacement clears prior chunks and cannot later be marked
+- [x] Test interruption during extraction, embedding, document replacement, migration, and shutdown.
+- [x] Test restart reconciliation after files change while the application is closed.
+- [x] Test cancellation from deletion, folder removal, reconfiguration, newer generations, and quit.
+- [x] Test a successful empty/non-indexable replacement clears prior chunks and cannot later be marked
       indexed through the unchanged-content fast path.
-- [ ] Test stale generations cannot commit after a newer change, deletion, or active-root removal.
-- [ ] Test reconciliation waits for a complete watcher snapshot before deleting durable records.
-- [ ] Verify previous valid chunks survive failed replacement.
-- [ ] Verify shutdown drains or aborts provider work and closes Turso cleanly.
+- [x] Test stale generations cannot commit after a newer change, deletion, or active-root removal.
+- [x] Test reconciliation waits for a complete watcher snapshot before deleting durable records.
+- [x] Verify previous valid chunks survive failed replacement.
+- [x] Verify shutdown drains or aborts provider work and closes Turso cleanly.
 
 Expected verification:
 
@@ -192,26 +207,28 @@ Architecture impact:
 
 Implementation:
 
-- Graceful shutdown and pre-commit generation checks exist, but freshness is not validated inside the
-  replacement transaction, deletion is not serialized with pending writes, and successful zero-chunk
-  replacement does not clear prior chunks.
+- Generation and active-root freshness, deletion, status writes, replacement, and reconciliation share
+  the serialized mutation boundary. Empty/non-indexable replacements clear chunks atomically.
 
 Tests:
 
-- Partial queue/database coverage exists; required scenarios remain incomplete.
+- Ingestion tests cover deletion and active-root removal during delayed embedding, zero-chunk
+  replacement, root cleanup, newer-change supersession, offline restart reconciliation, and shutdown
+  drain. Queue/database tests cover cancellation, close/drain, replacement rollback, and migration
+  rollback. Watcher tests prove the initial metadata snapshot is complete before the watching state
+  triggers reconciliation.
 
 Verification:
 
-- Static review on 2026-10-03 identified the commit-window and zero-chunk consistency defects. Existing
-  tests do not cover these scenarios.
+- The complete 94-test suite, typecheck, lint, and production build passed on 2026-10-04.
 
 Commit:
 
-- Defects observed at `2db71a3`; no fix implemented.
+- Not available.
 
 ### RAGX-005 — Add complete end-to-end RAG verification
 
-Status: Pending
+Status: Verified locally — packaged cross-platform smoke remains
 
 Purpose:
 Verify the user journey from folder selection through grounded answer citations.
@@ -223,10 +240,10 @@ Dependencies:
 
 Acceptance criteria:
 
-- [ ] Cover folder selection, initial index, file change/deletion, and restart persistence.
-- [ ] Cover retrieval, insufficient context, generation, citations, and conversation persistence.
-- [ ] Cover cancellation, offline mode, provider authentication failure, and transient provider error.
-- [ ] Run against fake/local providers without network or paid services in CI.
+- [x] Cover folder selection, initial index, file change/deletion, and restart persistence.
+- [x] Cover retrieval, insufficient context, generation, citations, and conversation persistence.
+- [x] Cover cancellation, offline mode, provider authentication failure, and transient provider error.
+- [x] Run against fake/local providers without network or paid services in CI.
 - [ ] Add supported-platform packaged smoke coverage where feasible.
 
 Expected verification:
@@ -239,15 +256,20 @@ Architecture impact:
 
 Implementation:
 
-- Not implemented.
+- The local integration path uses the real ingestion coordinator, embedded Turso database, exact
+  retriever, local hash embeddings, grounded answer service, and conversation repository with a
+  deterministic in-process generation provider.
 
 Tests:
 
-- Not implemented.
+- `src/main/ragE2e.test.ts` covers initial ingestion, database restart, scoped retrieval, grounded
+  citations, retained conversation evidence, re-indexing changed content, and deletion.
+- Watcher/settings tests cover folder restoration; chat/provider tests cover disabled/offline mode,
+  cancellation, authentication, transient failures, and privacy-safe error classification.
 
 Verification:
 
-- Not run.
+- The local RAG integration and focused error suites pass without network or paid services.
 
 Commit:
 
@@ -343,19 +365,24 @@ Commit:
 
 ## Decisions / blockers
 
-- Cloud provider, encryption, telemetry, and synchronization choices require product/security input.
-- IDX-004 and IDX-005 must establish canonical containment and commit integrity before retrieval trusts
-  indexed chunks.
+- Cloud provider, encryption, remote telemetry, and synchronization choices require product/security
+  input.
+- IDX-004 and IDX-005 have verified canonical containment and deterministic commit interleavings;
+  platform verification remains.
 - Retrieval enhancements require representative benchmarks rather than assumptions.
 
 ## Handoff
 
-- Authorized: Update relevant task and architecture documentation from the 2026-10-03 codebase audit.
-- Implemented: Expanded RAGX-004 with the verified zero-chunk, stale-generation, deletion, and
-  reconciliation recovery scenarios. No application behavior changed.
-- Verified: Static audit evidence is recorded under IDX-004 and IDX-005; the existing 24 tests pass but
-  do not cover the newly recorded scenarios.
-- Remaining: RAGX-001 through RAGX-007.
-- Risks/blockers: Index containment and integrity, privacy decisions, credential storage,
-  representative evaluation data, and packaging.
-- Next action: Complete IDX-004 and IDX-005 before core retrieval/chat relies on the index.
+- Authorized: The request covers pending implementation, but not separate protected product and
+  architecture decisions.
+- Implemented: Snapshot containment, generation-safe mutations, deterministic advertised-format
+  fixtures, interruption races, retrieval/evidence/orchestration foundations, conversation evidence
+  persistence, and Linux x64 packaged native/parser smoke verification.
+- Verified: The 94-test local quality suite, typecheck, lint, production build, project validation,
+  and prior Linux x64 packaged smoke passed.
+- Remaining: Additional-format evaluation, encrypted fixtures, cloud-provider and telemetry decisions,
+  packaged end-to-end chat, encryption policy, and deferred enhancements.
+- Risks/blockers: Representative evaluation data, cloud/privacy/encryption decisions, and
+  cross-platform runners.
+- Next action: Supply the format-evaluation corpus and encryption decisions, then run packaged chat
+  verification on clean platform runners.

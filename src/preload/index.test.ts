@@ -26,6 +26,19 @@ describe('preload contract', () => {
     expect(invoke).toHaveBeenCalledWith(ipcChannels.startWatching, ['/tmp'])
     await api.getWatchedFiles()
     expect(invoke).toHaveBeenCalledWith(ipcChannels.getWatchedFiles)
+    await api.askQuestion({ requestId: 'request-1', question: 'Question' })
+    expect(invoke).toHaveBeenCalledWith(ipcChannels.askQuestion, {
+      requestId: 'request-1',
+      question: 'Question'
+    })
+    await api.cancelQuestion('request-1')
+    expect(invoke).toHaveBeenCalledWith(ipcChannels.cancelQuestion, 'request-1')
+    await api.getIndexStatus()
+    expect(invoke).toHaveBeenCalledWith(ipcChannels.getIndexStatus)
+    await api.retryDocument('document-1')
+    expect(invoke).toHaveBeenCalledWith(ipcChannels.retryDocument, 'document-1')
+    await api.revealCitation('/managed/note.txt')
+    expect(invoke).toHaveBeenCalledWith(ipcChannels.revealCitation, '/managed/note.txt')
     const unsubscribe = api.onFileEvent(vi.fn())
     expect(on).toHaveBeenCalledWith(ipcChannels.fileEvent, expect.any(Function))
     unsubscribe()

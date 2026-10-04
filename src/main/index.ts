@@ -1,5 +1,6 @@
-import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import { writeFile } from 'node:fs/promises'
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, shell, Tray } from 'electron'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -8,12 +9,30 @@ import { WatcherService } from './watcher'
 import { DatabaseService } from './database/database'
 import { createEmbeddingProvider } from './config/aiSettings'
 import { IngestionCoordinator } from './ingestion/ingestionCoordinator'
+import { installNavigationPolicy, registerWatcherIpcHandlers } from './ipc'
+import {
+  loadLocalGenerationSettings,
+  loadWatchedFolders,
+  saveLocalGenerationSettings,
+  saveWatchedFolders
+} from './settings'
+import { registerChatIpcHandlers } from './chatIpc'
+import { LocalDiagnostics } from './diagnostics'
+import { registerIndexIpcHandlers } from './indexIpc'
 
 let tray: Tray | null = null
 let watcherService: WatcherService
 let databaseService: DatabaseService
 let ingestionCoordinator: IngestionCoordinator
+let diagnostics: LocalDiagnostics
 let shuttingDown = false
+
+function rendererUrl(): string {
+  return (
+    process.env['ELECTRON_RENDERER_URL'] ??
+    pathToFileURL(join(__dirname, '../renderer/index.html')).href
+  )
+}
 
 /** Sends an event payload to every open renderer window. */
 function broadcast(channel: string, payload: unknown): void {
@@ -27,21 +46,12 @@ function settingsPath(): string {
 
 /** Loads saved folders, falling back to an empty list for invalid settings. */
 async function loadSavedFolders(): Promise<string[]> {
-  try {
-    const settings = JSON.parse(await readFile(settingsPath(), 'utf8')) as {
-      watchedFolders?: unknown
-    }
-    return Array.isArray(settings.watchedFolders)
-      ? settings.watchedFolders.filter((value): value is string => typeof value === 'string')
-      : []
-  } catch {
-    return []
-  }
+  return loadWatchedFolders(settingsPath())
 }
 
 /** Persists the active folder list in Electron's user-data directory. */
 async function saveFolders(folders: string[]): Promise<void> {
-  await writeFile(settingsPath(), JSON.stringify({ watchedFolders: folders }, null, 2), 'utf8')
+  await saveWatchedFolders(settingsPath(), folders)
 }
 
 /** Creates and configures the sandboxed application browser window. */
@@ -63,15 +73,7 @@ function createWindow(): BrowserWindow {
   })
 
   mainWindow.on('ready-to-show', () => mainWindow.show())
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    try {
-      const protocol = new URL(url).protocol
-      if (protocol === 'https:' || protocol === 'http:') void shell.openExternal(url)
-    } catch {
-      // Invalid and non-web URLs stay inside the application boundary.
-    }
-    return { action: 'deny' }
-  })
+  installNavigationPolicy(mainWindow.webContents, rendererUrl(), (url) => shell.openExternal(url))
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     void mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
@@ -83,26 +85,53 @@ function createWindow(): BrowserWindow {
 }
 
 /** Registers the IPC handlers exposed through the preload bridge. */
-function registerIpcHandlers(): void {
-  ipcMain.handle(ipcChannels.selectFolders, async () => {
-    const result = await dialog.showOpenDialog({
-      title: 'Choose folders to watch',
-      properties: ['openDirectory', 'multiSelections']
-    })
-    return result.canceled ? [] : result.filePaths
+function registerIpcHandlers(
+  database: Awaited<ReturnType<DatabaseService['open']>>,
+  embeddings: ReturnType<typeof createEmbeddingProvider>
+): void {
+  registerWatcherIpcHandlers(ipcMain, {
+    watcher: watcherService,
+    trustedRendererUrl: rendererUrl(),
+    selectFolders: async () => {
+      const result = await dialog.showOpenDialog({
+        title: 'Choose folders to watch',
+        properties: ['openDirectory', 'multiSelections']
+      })
+      return result.canceled ? [] : result.filePaths
+    },
+    saveFolders
   })
-  ipcMain.handle(ipcChannels.startWatching, async (_event, folders: string[]) => {
-    const state = await watcherService.start(folders)
-    await saveFolders(state.folders)
-    return state
+  registerChatIpcHandlers(ipcMain, {
+    database,
+    embeddings,
+    trustedRendererUrl: rendererUrl(),
+    watchedRoots: () => watcherService.getState().folders,
+    loadGenerationSettings: () => loadLocalGenerationSettings(settingsPath()),
+    saveGenerationSettings: (settings) => saveLocalGenerationSettings(settingsPath(), settings),
+    metrics: diagnostics
   })
-  ipcMain.handle(ipcChannels.stopWatching, async () => {
-    const state = await watcherService.stop()
-    await saveFolders([])
-    return state
+  registerIndexIpcHandlers(ipcMain, {
+    database,
+    ingestion: ingestionCoordinator,
+    watcher: watcherService,
+    diagnostics,
+    trustedRendererUrl: rendererUrl(),
+    revealFile: (path) => shell.showItemInFolder(path),
+    exportDiagnostics: async (snapshot) => {
+      const result = await dialog.showSaveDialog({
+        title: 'Export privacy-safe diagnostics',
+        defaultPath: `pc-agent-diagnostics-${new Date().toISOString().slice(0, 10)}.json`,
+        filters: [{ name: 'JSON', extensions: ['json'] }]
+      })
+      if (result.canceled || !result.filePath) return false
+      await writeFile(
+        result.filePath,
+        JSON.stringify({ exportedAt: new Date().toISOString(), ...snapshot }, null, 2),
+        'utf8'
+      )
+      return true
+    }
   })
-  ipcMain.handle(ipcChannels.getWatcherState, () => watcherService.getState())
-  ipcMain.handle(ipcChannels.getWatchedFiles, () => watcherService.getFiles())
 }
 
 async function bootstrap(): Promise<void> {
@@ -111,7 +140,9 @@ async function bootstrap(): Promise<void> {
 
   databaseService = new DatabaseService(join(app.getPath('userData'), 'knowledge-base.db'))
   const database = await databaseService.open()
-  ingestionCoordinator = new IngestionCoordinator(database, createEmbeddingProvider())
+  diagnostics = new LocalDiagnostics()
+  const embeddings = createEmbeddingProvider()
+  ingestionCoordinator = new IngestionCoordinator(database, embeddings, { metrics: diagnostics })
   watcherService = new WatcherService(
     (event) => {
       ingestionCoordinator.handleFileEvent(event)
@@ -125,7 +156,7 @@ async function bootstrap(): Promise<void> {
       broadcast(ipcChannels.watcherState, state)
     }
   )
-  registerIpcHandlers()
+  registerIpcHandlers(database, embeddings)
   const mainWindow = createWindow()
 
   await new Promise<void>((resolve) => {

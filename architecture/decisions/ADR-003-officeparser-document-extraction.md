@@ -1,6 +1,6 @@
 # ADR-003: OfficeParser for structured document extraction
 
-Status: Proposed — retrospective approval required
+Status: Approved
 
 ## Context
 

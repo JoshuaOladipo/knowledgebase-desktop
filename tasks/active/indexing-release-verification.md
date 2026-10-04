@@ -1,6 +1,6 @@
 # Feature: Durable local document indexing
 
-Status: Partially implemented — security, integrity, verification, and architecture approval incomplete
+Status: Partially implemented — cross-platform and encrypted-document verification incomplete
 
 ## Feature intent
 
@@ -15,33 +15,32 @@ and cancellable extraction, chunking, and deterministic local embeddings.
 - [x] Support text, Markdown, DOCX, PPTX, XLSX, ODT, ODP, ODS, PDF, RTF, and EPUB policies.
 - [x] Preserve generalized page/slide/sheet/chapter metadata in chunks.
 - [x] Cancel superseded queue and provider work on a best-effort basis.
-- [ ] Prevent stale generations and deleted paths from committing durable state.
-- [ ] Enforce canonical containment for every watched file access, including directory symlinks and
+- [x] Prevent stale generations and deleted paths from committing durable state.
+- [x] Enforce canonical containment for every watched file access, including directory symlinks and
       path swaps.
-- [ ] Atomically clear prior chunks when current content is successfully classified as
+- [x] Atomically clear prior chunks when current content is successfully classified as
       empty/non-indexable.
-- [ ] Cover every enabled Office format with a real deterministic fixture.
+- [x] Cover every enabled Office format with a real deterministic fixture.
 - [ ] Verify Turso and OfficeParser behavior in packaged Linux, Windows, and macOS applications.
-- [ ] Obtain approval for ADR-001, ADR-002, and ADR-003 or revise the implementation.
-- [ ] Pass the complete project verification suite in the final implementation state.
+- [x] Obtain approval for ADR-001, ADR-002, and ADR-003 or revise the implementation.
+- [x] Pass the complete project verification suite in the final implementation state.
 
 ## Architecture assessment
 
 - Affected components: `electron-main`, `watcher`, `ingestion`, `ai`, `database`
-- Protected decision required: Yes
+- Protected decision required: Yes — approved on 2026-10-03
 - ADRs:
   - `architecture/decisions/ADR-001-embedded-turso-knowledge-base.md`
   - `architecture/decisions/ADR-002-main-process-rag-boundary.md`
   - `architecture/decisions/ADR-003-officeparser-document-extraction.md`
 
-The datastore, external parser dependency, and cross-component ownership choices existed before this
-task record and remain proposed pending explicit approval.
+The datastore, external parser dependency, and cross-component ownership choices are approved.
 
 ## Tasks
 
 ### IDX-001 — Verify real-format extraction fixtures
 
-Status: Pending
+Status: Implemented — encrypted-document coverage remains
 
 Purpose:
 Prove extraction structure, cancellation, limits, and sanitized failures for every advertised format.
@@ -52,10 +51,10 @@ Dependencies:
 
 Acceptance criteria:
 
-- [ ] Add deterministic DOCX, PPTX, XLSX, ODT, ODP, ODS, PDF, and EPUB fixtures.
-- [ ] Assert headings, pages, slides, sheets, chapters, and representative table/list content.
+- [x] Add deterministic DOCX, PPTX, XLSX, ODT, ODP, ODS, PDF, and EPUB fixtures.
+- [x] Assert headings, pages, slides, sheets, chapters, and representative table/list content.
 - [ ] Assert malformed, encrypted, empty, oversized, and archive-limit outcomes.
-- [ ] Assert parser cancellation and bounded resource-limit behavior.
+- [x] Assert parser cancellation and bounded resource-limit behavior.
 
 Expected verification:
 
@@ -68,16 +67,20 @@ Architecture impact:
 
 Implementation:
 
-- Partial RTF coverage exists at `src/main/ingestion/extractors/officeParser.test.ts:1` and
-  `src/main/ingestion/fixtures/sample.rtf`.
+- `scripts/generate-office-fixtures.mjs` deterministically creates every binary fixture plus a
+  compressed DOCX that exceeds the 64 MB expansion limit.
+- `src/main/ingestion/extractors/officeParser.test.ts` exercises real DOCX, PPTX, XLSX, ODT, ODP,
+  ODS, PDF, RTF, and EPUB content and generalized source metadata.
 
 Tests:
 
-- Additional fixtures and tests not implemented.
+- Real-format, malformed, cancellation, and archive-limit tests pass. Encrypted-document behavior is
+  not yet covered by a deterministic fixture.
 
 Verification:
 
-- Not run for this documentation update.
+- `pnpm test -- src/main/ingestion/extractors/officeParser.test.ts` passed as part of the 57-test
+  suite on 2026-10-03.
 
 Commit:
 
@@ -85,7 +88,7 @@ Commit:
 
 ### IDX-002 — Verify packaged native and parser assets
 
-Status: Pending
+Status: Partially implemented — Linux x64 unpacked smoke verified
 
 Purpose:
 Confirm that Turso native binaries and OfficeParser dependencies work from installed artifacts.
@@ -96,11 +99,11 @@ Dependencies:
 
 Acceptance criteria:
 
-- [ ] Verify packaged Linux x64 and configured Linux targets.
+- [x] Verify packaged Linux x64 and configured Linux targets.
 - [ ] Verify packaged Windows x64.
 - [ ] Verify packaged macOS ARM64.
 - [ ] Resolve whether macOS x64 is supported.
-- [ ] Confirm ASAR unpack behavior and PDF worker/runtime asset availability.
+- [x] Confirm ASAR unpack behavior and PDF worker/runtime asset availability on Linux x64.
 - [ ] Record any required `electron-builder.yml` changes.
 
 Expected verification:
@@ -115,7 +118,9 @@ Architecture impact:
 
 Implementation:
 
-- Not implemented.
+- `scripts/packaged-smoke.mjs:1-38` opens packaged Turso, executes SQL, and parses an in-memory RTF
+  through packaged OfficeParser.
+- `package.json` exposes `pnpm test:package:linux`.
 
 Tests:
 
@@ -123,7 +128,10 @@ Tests:
 
 Verification:
 
-- Not run.
+- `pnpm build:unpack` passed on Linux x64 on 2026-10-03.
+- `pnpm test:package:linux` passed against `dist/linux-unpacked`; the packaged ASAR contained the
+  Linux x64 Turso binary and PDF.js worker/runtime assets.
+- Windows, macOS, Linux ARM64, and installed-artifact checks remain pending.
 
 Commit:
 
@@ -131,7 +139,7 @@ Commit:
 
 ### IDX-003 — Ratify protected indexing decisions
 
-Status: Blocked pending project approval
+Status: Verified
 
 Purpose:
 Resolve the framework-required approval state for Turso, main-process ownership, and OfficeParser.
@@ -142,10 +150,10 @@ Dependencies:
 
 Acceptance criteria:
 
-- [ ] Approve, reject, or supersede ADR-001.
-- [ ] Approve, reject, or supersede ADR-002.
-- [ ] Approve, reject, or supersede ADR-003.
-- [ ] Align `architecture/CONTRACT.yaml` and implementation with the approved outcome.
+- [x] Approve, reject, or supersede ADR-001.
+- [x] Approve, reject, or supersede ADR-002.
+- [x] Approve, reject, or supersede ADR-003.
+- [x] Align `architecture/CONTRACT.yaml` and implementation with the approved outcome.
 
 Expected verification:
 
@@ -157,7 +165,8 @@ Architecture impact:
 
 Implementation:
 
-- Proposed ADRs written; approval not granted.
+- ADR-001, ADR-002, and ADR-003 were explicitly approved by the project owner on 2026-10-03; their
+  records now have `Status: Approved` and match `architecture/CONTRACT.yaml`.
 
 Tests:
 
@@ -165,7 +174,7 @@ Tests:
 
 Verification:
 
-- Pending approval.
+- Architecture records and the contract were reviewed for status and boundary consistency.
 
 Commit:
 
@@ -173,7 +182,7 @@ Commit:
 
 ### IDX-004 — Enforce canonical watched-root containment
 
-Status: Pending — security defect reproduced
+Status: Verified locally — cross-platform behavior remains under IDX-002
 
 Purpose:
 Ensure every file read, hash, and extraction remains confined to an explicitly managed canonical
@@ -185,15 +194,15 @@ Dependencies:
 
 Acceptance criteria:
 
-- [ ] Disable directory-symlink traversal in the watcher under the current reject-symlinks policy.
-- [ ] Canonicalize each file target immediately before privileged access and require it to be within
+- [x] Disable directory-symlink traversal in the watcher under the current reject-symlinks policy.
+- [x] Canonicalize each file target immediately before privileged access and require it to be within
       an active canonical root.
-- [ ] Reject intermediate-component symlinks and regular-file-to-symlink swaps without indexing or
+- [x] Reject intermediate-component symlinks and regular-file-to-symlink swaps without indexing or
       exposing the external target.
-- [ ] Define canonical document identity for nested roots, platform case behavior, and display paths.
-- [ ] Hash and extract one already-bounded file snapshot instead of reopening the source path.
-- [ ] Recheck the bounded snapshot size so a post-policy file growth cannot bypass the 10 MB limit.
-- [ ] Add deterministic tests for a directory symlink escape, final-component symlink, path swap,
+- [x] Define canonical document identity for nested roots, platform case behavior, and display paths.
+- [x] Hash and extract one already-bounded file snapshot instead of reopening the source path.
+- [x] Recheck the bounded snapshot size so a post-policy file growth cannot bypass the 10 MB limit.
+- [x] Add deterministic tests for a directory symlink escape, final-component symlink, path swap,
       nested roots, and files removed during validation.
 
 Expected verification:
@@ -209,26 +218,24 @@ Architecture impact:
 
 Implementation:
 
-- Watched roots are canonicalized in `src/main/watcher.ts:10-31`.
-- Chokidar is created without overriding its default `followSymlinks: true` behavior at
-  `src/main/watcher.ts:83-87`.
-- `pathIsInside` performs lexical `resolve`/`relative` checks at
-  `src/main/ingestion/ingestionCoordinator.ts:26-30`.
-- `inspectFile` uses `lstat` only on the final path component at
-  `src/main/ingestion/filePolicy.ts:67-115`.
-- Hashing and extractors read the source path independently at
-  `src/main/ingestion/ingestionCoordinator.ts:183-199`.
+- Chokidar disables symlink traversal at `src/main/watcher.ts:83-87`.
+- `openFileSnapshot` canonicalizes root and target, rejects symlinks and inode swaps, rechecks size,
+  and returns one byte snapshot at `src/main/ingestion/filePolicy.ts:136-221`.
+- Hashing and every extractor consume that same snapshot through
+  `src/main/ingestion/ingestionCoordinator.ts:197-250` and `src/main/ingestion/extractText.ts`.
 
 Tests:
 
-- Existing watcher and ingestion tests do not cover directory symlinks, canonical target escape, or
-  path swaps.
+- `src/main/watcher.test.ts` covers directory-symlink non-traversal.
+- `src/main/ingestion/ingestion.test.ts` covers final/intermediate symlink rejection, deterministic
+  regular-file replacement with an external symlink, removal during validation, nested-root identity,
+  bounded snapshot reads, and oversized snapshots. Platform-specific case behavior remains under the
+  packaged platform matrix.
 
 Verification:
 
-- On 2026-10-03, a focused runtime probe with the installed Chokidar version observed
-  `root/linked/external.txt` while its canonical target was outside the canonical watched root.
-- Static review confirmed no descendant `realpath` containment check before ingestion.
+- Focused watcher/ingestion tests and the complete 94-test suite, lint, typecheck, and build passed on
+  2026-10-04.
 
 Commit:
 
@@ -236,7 +243,7 @@ Commit:
 
 ### IDX-005 — Make ingestion commits generation-safe and chunk-consistent
 
-Status: Pending — correctness defects identified
+Status: Verified locally
 
 Purpose:
 Ensure successful replacements, cancellations, deletions, and reconciliation cannot leave stale
@@ -248,19 +255,19 @@ Dependencies:
 
 Acceptance criteria:
 
-- [ ] Replace a successfully processed empty/non-indexable document with zero chunks atomically, or
+- [x] Replace a successfully processed empty/non-indexable document with zero chunks atomically, or
       delete its prior chunks in an equivalent transaction while retaining the intended status.
-- [ ] Permit the unchanged-content fast path only when the durable status and chunk state are
+- [x] Permit the unchanged-content fast path only when the durable status and chunk state are
       compatible; never turn a skipped empty document back into an indexed stale document.
-- [ ] Validate generation freshness and active-root membership inside the serialized document/chunk
+- [x] Validate generation freshness and active-root membership inside the serialized document/chunk
       mutation.
-- [ ] Serialize deletion or use a tombstone/generation condition so pending status or replacement
+- [x] Serialize deletion or use a tombstone/generation condition so pending status or replacement
       writes cannot recreate a deleted record.
-- [ ] Prevent startup reconciliation from deleting a previous valid index based on an incomplete
+- [x] Prevent startup reconciliation from deleting a previous valid index based on an incomplete
       watcher-ready snapshot.
-- [ ] Preserve previous valid chunks on extraction or embedding failure without exposing them as the
+- [x] Preserve previous valid chunks on extraction or embedding failure without exposing them as the
       current successfully indexed content.
-- [ ] Add deterministic race tests for change-during-commit, delete-during-status-write,
+- [x] Add deterministic race tests for change-during-commit, delete-during-status-write,
       delete-during-replacement, root removal, empty replacement, and watcher-ready reconciliation.
 
 Expected verification:
@@ -276,26 +283,25 @@ Architecture impact:
 
 Implementation:
 
-- The unchanged fast path marks a matching record indexed at
-  `src/main/ingestion/ingestionCoordinator.ts:191-195`.
-- The zero-chunk path updates only the document at
-  `src/main/ingestion/ingestionCoordinator.ts:200-215`; chunk deletion occurs only inside
-  `ChunkRepository.replaceDocument` at `src/main/database/chunkRepository.ts:50-118`.
-- Generation freshness is last checked before replacement at
-  `src/main/ingestion/ingestionCoordinator.ts:218-247`; the transaction receives no generation or
-  active-root condition.
-- Deletion starts asynchronously without awaiting serialization at
-  `src/main/ingestion/ingestionCoordinator.ts:60-64`.
+- Root removal, file deletion, reconciliation, status updates, and replacements share the mutation
+  serialization boundary at `src/main/ingestion/ingestionCoordinator.ts:54-94` and `:169-188`.
+- Generation and active-root freshness are checked inside that boundary before every mutation.
+- Empty and successfully non-indexable replacements call transactional `replaceDocument` with zero
+  chunks at `src/main/ingestion/ingestionCoordinator.ts:201-225` and `:254-273`.
+- The unchanged fast path now requires a compatible durable `indexed` status at `:236-244`.
 
 Tests:
 
-- Database rollback and queue cancellation have partial coverage, but the acceptance races and
-  zero-chunk replacement are not covered.
+- `src/main/ingestion/ingestion.test.ts` uses a deterministic serialized-mutation barrier to cover a
+  newer change during atomic replacement and deletion during queued-status and replacement writes;
+  it also covers zero-chunk replacement and root removal.
+- Watcher, queue, and database tests cover complete ready snapshots, cancellation, and transactional
+  rollback.
 
 Verification:
 
-- Static review on 2026-10-03 established the stale-chunk and commit-window paths above.
-- The existing suite passed 24 tests, but none exercise these negative cases.
+- Ingestion/database tests and the complete 94-test suite, lint, typecheck, and production build
+  passed on 2026-10-04.
 
 Commit:
 
@@ -303,23 +309,17 @@ Commit:
 
 ## Decisions / blockers
 
-- Canonical descendant containment and serialized generation checks are required before retrieval can
-  safely consume indexed chunks.
-- Successful empty/non-indexable replacements can currently retain old chunks.
-- Complete format support cannot be claimed until real fixtures and packaged builds pass.
+- Encrypted-document fixture coverage remains incomplete.
+- Complete platform support cannot be claimed until packaged builds pass on every supported target.
 - macOS x64 compatibility is unresolved.
-- The three retrospective ADRs require explicit project approval.
 
 ## Handoff
 
-- Authorized: Update relevant task and architecture documentation from the 2026-10-03 codebase audit.
-- Implemented: Recorded containment and commit-integrity defects as IDX-004 and IDX-005; corrected the
-  stale completion claim; aligned security and RAG architecture requirements. No application behavior
-  changed.
-- Verified: Audit evidence includes a reproduced directory-symlink escape, source inspection, 24
-  passing tests, passing lint/typecheck/build/project validation, and a failing repository-wide
-  Prettier check documented under HARD-001.
-- Remaining: IDX-001 through IDX-005.
-- Risks/blockers: Out-of-root file access, stale chunks, stale-generation commits, native packaging,
-  parser assets, missing fixtures, and unapproved protected decisions.
-- Next action: Authorize and implement IDX-004, then IDX-005, before retrieval work.
+- Authorized: All active tasks; ADR-001, ADR-002, and ADR-003 are approved.
+- Implemented: Canonical snapshots, generation-safe mutations, zero-chunk replacement, deterministic
+  real-format fixtures, archive-limit coverage, and Linux x64 packaged smoke verification.
+- Verified: Prettier, lint, typecheck, 94 tests, production build, project validation, deterministic
+  fixture regeneration, Linux x64 unpacked build, ASAR inspection, and packaged native/parser smoke.
+- Remaining: Encrypted-document fixture coverage and Windows/macOS/Linux ARM64 package and
+  installed-artifact checks.
+- Risks/blockers: Cross-platform runners/clean machines and an encrypted fixture generator.

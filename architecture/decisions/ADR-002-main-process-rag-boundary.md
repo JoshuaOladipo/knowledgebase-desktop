@@ -1,6 +1,6 @@
 # ADR-002: Keep privileged RAG capabilities in the Electron main process
 
-Status: Proposed — retrospective approval required
+Status: Approved
 
 ## Context
 

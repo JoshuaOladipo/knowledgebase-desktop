@@ -101,3 +101,4 @@ related_decisions:
   - architecture/decisions/ADR-001-embedded-turso-knowledge-base.md
   - architecture/decisions/ADR-002-main-process-rag-boundary.md
   - architecture/decisions/ADR-003-officeparser-document-extraction.md
+  - architecture/decisions/ADR-004-user-managed-local-generation-server.md

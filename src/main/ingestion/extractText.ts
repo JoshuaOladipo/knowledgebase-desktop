@@ -25,6 +25,8 @@ export interface ExtractionResult {
 export interface ExtractionRequest {
   path: string
   type: SupportedDocumentType
+  /** The already validated, size-bounded snapshot used for hashing and extraction. */
+  bytes: Uint8Array
   signal?: AbortSignal
 }
 

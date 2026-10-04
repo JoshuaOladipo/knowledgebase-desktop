@@ -1,6 +1,6 @@
 # ADR-001: Embedded Turso knowledge base
 
-Status: Proposed — retrospective approval required
+Status: Approved
 
 ## Context
 

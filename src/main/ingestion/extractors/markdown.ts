@@ -1,4 +1,3 @@
-import { readFile } from 'node:fs/promises'
 import type {
   ExtractedSection,
   ExtractionRequest,
@@ -13,7 +12,7 @@ export const markdownExtractor: TextExtractor = {
   supports: (type) => type === 'markdown',
   async extract(request): Promise<ExtractionResult> {
     if (request.signal?.aborted) throw new DOMException('Extraction was cancelled.', 'AbortError')
-    const source = new TextDecoder('utf-8', { fatal: true }).decode(await readFile(request.path))
+    const source = new TextDecoder('utf-8', { fatal: true }).decode(request.bytes)
     if (request.signal?.aborted) throw new DOMException('Extraction was cancelled.', 'AbortError')
     const text = normalizeText(source)
     if (!text) return { text, extractorVersion: this.version, sections: [] }

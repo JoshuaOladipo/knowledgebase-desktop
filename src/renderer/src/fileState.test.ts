@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { FileEntry } from '../../shared/contracts'
-import { applyFileEvent, filterFiles, formatBytes } from './fileState'
+import {
+  activeSelection,
+  applyFileEvent,
+  currentDetails,
+  filterFiles,
+  formatBytes,
+  toggleVisibleSelection
+} from './fileState'
 import { selectFileView } from './viewState'
 
 const file: FileEntry = {
@@ -32,5 +39,24 @@ describe('renderer file state', () => {
     expect(formatBytes(2048)).toBe('2.0 KB')
     expect(selectFileView('cards')).toBe('cards')
     expect(selectFileView('list')).toBe('list')
+  })
+
+  it('reconciles selection and refreshes or closes details from the active snapshot', () => {
+    const changed = { ...file, size: 4096 }
+    expect(activeSelection([changed], new Set([file.path, '/removed']))).toEqual(
+      new Set([file.path])
+    )
+    expect(currentDetails([changed], file)).toEqual(changed)
+    expect(currentDetails([], file)).toBeNull()
+  })
+
+  it('toggles visible selections while preserving hidden selections and handles empty results', () => {
+    const hidden = { ...file, path: '/hidden', name: 'hidden' }
+    const selected = new Set([hidden.path])
+    expect(toggleVisibleSelection([file], selected)).toEqual(new Set([hidden.path, file.path]))
+    expect(toggleVisibleSelection([file], new Set([hidden.path, file.path]))).toEqual(
+      new Set([hidden.path])
+    )
+    expect(toggleVisibleSelection([], selected)).toBe(selected)
   })
 })

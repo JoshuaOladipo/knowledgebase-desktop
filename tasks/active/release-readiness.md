@@ -1,6 +1,6 @@
 # Feature: Cross-platform release readiness
 
-Status: Planning
+Status: Partially implemented — cross-platform installation and signing remain
 
 ## Feature intent
 
@@ -26,7 +26,7 @@ architecture, signing, native dependency, and runtime evidence.
 
 ### REL-001 — Run the native package matrix and install artifacts
 
-Status: Pending
+Status: Partially implemented — Linux x64 unpacked artifact verified
 
 Purpose:
 Prove that build success translates into installable applications.
@@ -53,7 +53,8 @@ Architecture impact:
 
 Implementation:
 
-- Workflow exists; clean-machine installation evidence is pending.
+- Workflow exists. A Linux x64 unpacked application was built locally; clean-machine installation and
+  Windows/macOS artifacts remain pending.
 
 Tests:
 
@@ -113,7 +114,7 @@ Commit:
 
 ### REL-003 — Resolve native module and asset packaging
 
-Status: Pending
+Status: Partially implemented — Linux x64 packaged dependencies verified
 
 Purpose:
 Ensure Turso binaries and OfficeParser/PDF assets load from packaged applications.
@@ -141,7 +142,8 @@ Architecture impact:
 
 Implementation:
 
-- Not fully verified.
+- `scripts/packaged-smoke.mjs` passed with the Linux x64 unpacked application's Electron runtime,
+  packaged Turso binary, and OfficeParser. ASAR inspection confirmed PDF.js worker/runtime assets.
 
 Tests:
 
@@ -206,9 +208,12 @@ Commit:
 
 ## Handoff
 
-- Authorized: Documentation migration only.
-- Implemented: Release checklist and durable release tasks.
-- Verified: No platform verification claimed.
-- Remaining: REL-001 through REL-004.
-- Risks/blockers: Native binaries, ASAR assets, signing credentials, clean-machine access.
-- Next action: Complete HARD-001 and IDX-001, then authorize REL-001.
+- Authorized: All pending tasks that do not require protected decisions or external credentials.
+- Implemented: Linux x64 unpacked packaging plus packaged Turso/OfficeParser smoke coverage.
+- Verified: `pnpm build:unpack`, ASAR/native asset inspection, and `pnpm test:package:linux` passed.
+- Remaining: Installable target artifacts, clean-machine scenarios, Windows/macOS/Linux ARM64 native
+  verification, macOS x64 decision, signing/notarization, checksums, and release dry run.
+- Risks/blockers: Required operating systems/architectures and signing/publishing credentials are not
+  available in this workspace.
+- Next action: Run `.github/workflows/package-check.yml` on hosted runners and install its artifacts on
+  clean systems.

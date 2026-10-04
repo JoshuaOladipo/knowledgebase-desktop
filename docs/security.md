@@ -33,13 +33,24 @@ provider capability.
 
 ## Local and cloud data
 
-The current hash embedding provider and embedded Turso database operate locally. A future cloud
-embedding or generation provider may receive questions and extracted source text. The application must
-disclose that behavior before activation and store provider credentials through operating-system
-credential storage. Credentials must never be stored in `settings.json`, the knowledge-base database,
-renderer state, or ordinary logs.
+The hash embedding provider and embedded Turso database operate locally. Generation may be sent only
+to a user-enabled HTTP(S) loopback endpoint on `localhost`, `127.0.0.1`, or `[::1]`. The adapter sends
+no credentials, accepts no arbitrary headers, rejects URL credentials/query/fragment data and
+redirects, and bounds timeout/output settings. A future cloud provider may receive questions and
+extracted source text; it must disclose that behavior before activation and store provider credentials
+through operating-system credential storage. Credentials must never be stored in `settings.json`, the
+knowledge-base database, renderer state, or ordinary logs.
 
 Cloud database synchronization is not currently enabled and must not be introduced silently.
+
+## Diagnostics policy
+
+Diagnostics are local, aggregate, and in-memory until explicitly cleared or the application exits.
+They contain operation names, counts, categorized outcomes, durations, index-stage counts, queue depth,
+chunk totals, and database size. They exclude filenames from timing records and never contain source
+text, embeddings, parser data, prompts, answers, credentials, or persistent device/user identifiers.
+The user may export the same redacted snapshot to a chosen JSON file. No telemetry endpoint or remote
+transmission code is configured.
 
 ## Parser policy
 
@@ -48,16 +59,17 @@ comments, notes, headers, footers, and slide masters are disabled initially. Par
 must be sanitized so they do not disclose document content or raw archive/XML data. Parsers receive the
 same already-bounded snapshot used for content hashing rather than reopening an untrusted path.
 
-## Known hardening gaps
+## Known verification and release gaps
 
-The current implementation does not yet enforce every required control above:
+The current implementation disables directory-symlink traversal, extracts from a canonical bounded
+snapshot, serializes freshness checks with mutations, validates privileged IPC senders and payloads,
+and denies untrusted top-level navigation. Remaining work is primarily verification:
 
-- Chokidar currently uses its default directory-symlink following behavior, and descendant event paths
-  receive only lexical containment checks.
-- Ingestion freshness is checked before, rather than inside, document replacement; deletion is not
-  serialized with pending status writes and replacement commits.
-- IPC handlers do not yet enforce a sender-frame/origin policy, and the application window does not
-  explicitly reject top-level navigation.
+- Deterministic path-swap and mutation-race tests need broader platform coverage.
+- Real fixtures cover every advertised format; encrypted-document coverage remains incomplete.
+- Packaged Turso and OfficeParser smoke verification has passed on Linux x64 only; Windows and macOS
+  remain unverified.
+- The datastore, RAG-boundary, parser, and local-generation-server ADRs are approved.
 
 Implementation and verification are tracked in `tasks/active/indexing-release-verification.md` and
 `tasks/active/project-hardening.md`.

@@ -1,9 +1,9 @@
-import { readFile, stat } from 'node:fs/promises'
-import type { Stats } from 'node:fs'
 import { basename, relative, resolve, sep } from 'node:path'
 import type { FileEntry, FileEvent } from '../../shared/contracts'
 import type { EmbeddingProvider } from '../ai/embeddingProvider'
 import { embedInBatches } from '../ai/embeddingProvider'
+import type { OperationMetricRecorder, OperationOutcome } from '../ai/operationMetrics'
+import { measureOperation } from '../ai/operationMetrics'
 import { ChunkRepository } from '../database/chunkRepository'
 import { DocumentRepository } from '../database/documentRepository'
 import type { DocumentStatus, DocumentWrite } from '../database/models'
@@ -11,13 +11,24 @@ import { embeddingConfigurationFingerprint } from '../config/aiSettings'
 import { CHUNKER_VERSION, chunkText } from './chunkText'
 import { contentHash, ingestionConfigurationFingerprint } from './contentHash'
 import { extractorVersion, extractText } from './extractText'
-import { inspectFile } from './filePolicy'
+import { openFileSnapshot } from './filePolicy'
 import { IngestionQueue } from './ingestionQueue'
 
 export interface IngestionCoordinatorOptions {
   concurrency?: number
   stabilizationDelayMs?: number
+  metrics?: OperationMetricRecorder
+  /** Optional deterministic barrier used by race tests before serialized mutations commit. */
+  beforeMutation?: (stage: IngestionMutationStage, path: string) => Promise<void>
 }
+
+export type IngestionMutationStage =
+  | 'queued-status'
+  | 'extracting-status'
+  | 'chunking-status'
+  | 'embedding-status'
+  | 'replacement'
+  | 'error-status'
 
 function abortError(): DOMException {
   return new DOMException('Ingestion was cancelled.', 'AbortError')
@@ -36,6 +47,9 @@ export class IngestionCoordinator {
   private readonly chunks: ChunkRepository
   private activeRoots: string[] = []
   private readonly stabilizationDelayMs: number
+  private readonly metrics?: OperationMetricRecorder
+  private readonly beforeMutation?: IngestionCoordinatorOptions['beforeMutation']
+  private mutationTail: Promise<void> = Promise.resolve()
 
   constructor(
     database: ConstructorParameters<typeof DocumentRepository>[0],
@@ -45,6 +59,8 @@ export class IngestionCoordinator {
     this.documents = new DocumentRepository(database)
     this.chunks = new ChunkRepository(database)
     this.stabilizationDelayMs = options.stabilizationDelayMs ?? 250
+    this.metrics = options.metrics
+    this.beforeMutation = options.beforeMutation
     this.queue = new IngestionQueue(
       (job, generation, signal) =>
         this.process(job.path, job.watchedRoot, generation, signal, job.force),
@@ -55,17 +71,24 @@ export class IngestionCoordinator {
   setActiveRoots(roots: string[]): void {
     this.activeRoots = [...roots]
     this.queue.cancelOutsideRoots(roots, pathIsInside)
+    void this.serializeMutation(async () => {
+      for (const document of await this.documents.list()) {
+        if (!roots.some((root) => pathIsInside(root, document.path))) {
+          await this.documents.deleteByPath(document.path)
+        }
+      }
+    })
   }
 
   handleFileEvent(event: FileEvent): void {
     if (event.type === 'unlink') {
       this.queue.cancel(event.path)
-      void this.documents.deleteByPath(event.path)
+      void this.serializeMutation(() => this.documents.deleteByPath(event.path))
       return
     }
     if (!event.entry || event.entry.isDirectory) return
     const watchedRoot = this.findRoot(event.path)
-    if (watchedRoot) this.queue.enqueue({ path: event.path, watchedRoot })
+    if (watchedRoot) this.enqueue(event.path, watchedRoot)
   }
 
   /** Removes stale records and enqueues new or changed files after watcher startup. */
@@ -78,13 +101,13 @@ export class IngestionCoordinator {
         !currentPaths.has(document.path)
       ) {
         this.queue.cancel(document.path)
-        await this.documents.deleteByPath(document.path)
+        await this.serializeMutation(() => this.documents.deleteByPath(document.path))
       }
     }
     for (const file of files) {
       if (file.isDirectory) continue
       const watchedRoot = this.findRoot(file.path)
-      if (watchedRoot) this.queue.enqueue({ path: file.path, watchedRoot })
+      if (watchedRoot) this.enqueue(file.path, watchedRoot)
     }
   }
 
@@ -93,16 +116,28 @@ export class IngestionCoordinator {
     for (const file of files) {
       if (file.isDirectory) continue
       const watchedRoot = this.findRoot(file.path)
-      if (watchedRoot) this.queue.enqueue({ path: file.path, watchedRoot, force: true })
+      if (watchedRoot) this.enqueue(file.path, watchedRoot, true)
     }
+  }
+
+  retry(path: string): void {
+    const watchedRoot = this.findRoot(path)
+    if (!watchedRoot) throw new Error('Document is outside the active watched roots.')
+    this.enqueue(path, watchedRoot, true)
+  }
+
+  getQueueState(): { pendingJobs: number; activeWorkers: number } {
+    return this.queue.getState()
   }
 
   async onIdle(): Promise<void> {
     await this.queue.onIdle()
+    await this.mutationTail
   }
 
   async close(): Promise<void> {
     await this.queue.close()
+    await this.mutationTail
   }
 
   private findRoot(path: string): string | undefined {
@@ -111,21 +146,36 @@ export class IngestionCoordinator {
       .sort((left, right) => right.length - left.length)[0]
   }
 
+  private enqueue(path: string, watchedRoot: string, force = false): void {
+    const generation = this.queue.enqueue({ path, watchedRoot, force })
+    void this.serializeMutation(async () => {
+      await this.beforeMutation?.('queued-status', path)
+      if (
+        this.queue.isCurrent(path, generation) &&
+        this.activeRoots.some((root) => pathIsInside(root, path))
+      ) {
+        const existing = await this.documents.getByPath(path)
+        if (force || existing?.status !== 'indexed') {
+          await this.writeStatus(path, watchedRoot, 'queued')
+        }
+      }
+    })
+  }
+
   private async writeStatus(
     path: string,
     watchedRoot: string,
     status: DocumentStatus,
     error: string | null = null
   ): Promise<void> {
-    const details = await stat(path).catch(() => null)
     const existing = await this.documents.getByPath(path)
     await this.documents.upsert({
       path,
       name: basename(path),
       watchedRoot,
       mimeType: existing?.mimeType ?? 'application/octet-stream',
-      size: details?.size ?? existing?.size ?? 0,
-      modifiedAt: details?.mtime.toISOString() ?? existing?.modifiedAt ?? new Date().toISOString(),
+      size: existing?.size ?? 0,
+      modifiedAt: existing?.modifiedAt ?? new Date().toISOString(),
       contentHash: existing?.contentHash,
       configFingerprint: existing?.configFingerprint,
       status,
@@ -134,11 +184,16 @@ export class IngestionCoordinator {
   }
 
   private assertCurrent(path: string, generation: number, signal: AbortSignal): void {
-    if (signal.aborted || !this.queue.isCurrent(path, generation)) throw abortError()
+    if (
+      signal.aborted ||
+      !this.queue.isCurrent(path, generation) ||
+      !this.activeRoots.some((root) => pathIsInside(root, path))
+    ) {
+      throw abortError()
+    }
   }
 
-  private async stableStat(path: string, signal: AbortSignal): Promise<Stats> {
-    const first = await stat(path)
+  private async stabilize(signal: AbortSignal): Promise<void> {
     if (this.stabilizationDelayMs > 0) {
       await new Promise<void>((resolveDelay, reject) => {
         const timeout = setTimeout(resolveDelay, this.stabilizationDelayMs)
@@ -152,11 +207,29 @@ export class IngestionCoordinator {
         )
       })
     }
-    const second = await stat(path)
-    if (first.size !== second.size || first.mtimeMs !== second.mtimeMs) {
-      throw Object.assign(new Error('File is still changing.'), { transient: true })
-    }
-    return second
+  }
+
+  private serializeMutation<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.mutationTail.then(operation, operation)
+    this.mutationTail = result.then(
+      () => undefined,
+      () => undefined
+    )
+    return result
+  }
+
+  private mutateIfCurrent<T>(
+    path: string,
+    generation: number,
+    signal: AbortSignal,
+    stage: IngestionMutationStage,
+    operation: () => Promise<T>
+  ): Promise<T> {
+    return this.serializeMutation(async () => {
+      await this.beforeMutation?.(stage, path)
+      this.assertCurrent(path, generation, signal)
+      return operation()
+    })
   }
 
   private async process(
@@ -166,22 +239,42 @@ export class IngestionCoordinator {
     signal: AbortSignal,
     force = false
   ): Promise<void> {
+    const startedAt = performance.now()
+    let outcome: OperationOutcome = 'success'
     try {
-      await this.writeStatus(path, watchedRoot, 'queued')
-      const policy = await inspectFile(path, watchedRoot)
+      await this.stabilize(signal)
+      const policy = await openFileSnapshot(path, watchedRoot)
       this.assertCurrent(path, generation, signal)
-      if (!policy.accepted || !policy.type || !policy.mimeType) {
-        await this.writeStatus(
-          path,
-          watchedRoot,
-          'skipped',
-          policy.message ?? policy.reason ?? null
-        )
+      if ('accepted' in policy) {
+        outcome = 'skipped'
+        const existing = await this.documents.getByPath(path)
+        if (policy.reason === 'unreadable') {
+          await this.mutateIfCurrent(path, generation, signal, 'error-status', () =>
+            this.writeStatus(path, watchedRoot, 'error', policy.message ?? policy.reason ?? null)
+          )
+        } else {
+          await this.mutateIfCurrent(path, generation, signal, 'replacement', () =>
+            this.chunks.replaceDocument(
+              {
+                path,
+                name: basename(path),
+                watchedRoot,
+                mimeType: existing?.mimeType ?? 'application/octet-stream',
+                size: existing?.size ?? 0,
+                modifiedAt: existing?.modifiedAt ?? new Date().toISOString(),
+                contentHash: null,
+                configFingerprint: null,
+                status: 'skipped',
+                error: policy.message ?? policy.reason ?? null
+              },
+              []
+            )
+          )
+        }
         return
       }
 
-      const details = await this.stableStat(path, signal)
-      const bytes = await readFile(path)
+      const { bytes, details } = policy
       const hash = contentHash(bytes)
       const fingerprint = ingestionConfigurationFingerprint({
         extractorVersion: extractorVersion(policy.type),
@@ -189,37 +282,56 @@ export class IngestionCoordinator {
         embeddingFingerprint: embeddingConfigurationFingerprint(this.embeddingProvider)
       })
       const existing = await this.documents.getByPath(path)
-      if (!force && existing?.contentHash === hash && existing.configFingerprint === fingerprint) {
-        await this.documents.updateStatus(path, 'indexed')
+      if (
+        !force &&
+        existing?.status === 'indexed' &&
+        existing.contentHash === hash &&
+        existing.configFingerprint === fingerprint
+      ) {
+        outcome = 'skipped'
         return
       }
 
-      await this.writeStatus(path, watchedRoot, 'extracting')
-      const extracted = await extractText({ path, type: policy.type, signal })
+      await this.mutateIfCurrent(path, generation, signal, 'extracting-status', () =>
+        this.writeStatus(path, watchedRoot, 'extracting')
+      )
+      const extracted = await extractText({ path, type: policy.type, bytes, signal })
       this.assertCurrent(path, generation, signal)
-      await this.writeStatus(path, watchedRoot, 'chunking')
+      await this.mutateIfCurrent(path, generation, signal, 'chunking-status', () =>
+        this.writeStatus(path, watchedRoot, 'chunking')
+      )
       const chunks = chunkText(extracted)
       if (chunks.length === 0) {
-        await this.documents.upsert({
-          path,
-          name: basename(path),
-          watchedRoot,
-          mimeType: policy.mimeType,
-          size: details.size,
-          modifiedAt: details.mtime.toISOString(),
-          contentHash: hash,
-          configFingerprint: fingerprint,
-          status: 'skipped',
-          error: 'Document contains no indexable text.'
-        })
+        outcome = 'skipped'
+        await this.mutateIfCurrent(path, generation, signal, 'replacement', () =>
+          this.chunks.replaceDocument(
+            {
+              path,
+              name: basename(path),
+              watchedRoot,
+              mimeType: policy.mimeType,
+              size: details.size,
+              modifiedAt: details.mtime.toISOString(),
+              contentHash: hash,
+              configFingerprint: fingerprint,
+              status: 'skipped',
+              error: 'Document contains no indexable text.'
+            },
+            []
+          )
+        )
         return
       }
 
-      await this.writeStatus(path, watchedRoot, 'embedding')
-      const embeddings = await embedInBatches(
-        this.embeddingProvider,
-        chunks.map((chunk) => chunk.content),
-        signal
+      await this.mutateIfCurrent(path, generation, signal, 'embedding-status', () =>
+        this.writeStatus(path, watchedRoot, 'embedding')
+      )
+      const embeddings = await measureOperation(this.metrics, 'file-embedding', () =>
+        embedInBatches(
+          this.embeddingProvider,
+          chunks.map((chunk) => chunk.content),
+          signal
+        )
       )
       this.assertCurrent(path, generation, signal)
       const document: DocumentWrite = {
@@ -234,26 +346,36 @@ export class IngestionCoordinator {
         status: 'indexed',
         error: null
       }
-      await this.chunks.replaceDocument(
-        document,
-        chunks.map((chunk, index) => ({
-          ...chunk,
-          pageNumber: chunk.sourceKind === 'page' ? chunk.sourceIndex : null,
-          embedding: embeddings[index],
-          embeddingProvider: this.embeddingProvider.id,
-          embeddingModel: this.embeddingProvider.model,
-          embeddingDimensions: this.embeddingProvider.dimensions
-        }))
+      await this.mutateIfCurrent(path, generation, signal, 'replacement', () =>
+        this.chunks.replaceDocument(
+          document,
+          chunks.map((chunk, index) => ({
+            ...chunk,
+            pageNumber: chunk.sourceKind === 'page' ? chunk.sourceIndex : null,
+            embedding: embeddings[index],
+            embeddingProvider: this.embeddingProvider.id,
+            embeddingModel: this.embeddingProvider.model,
+            embeddingDimensions: this.embeddingProvider.dimensions
+          }))
+        )
       )
     } catch (error) {
-      if (signal.aborted || (error instanceof DOMException && error.name === 'AbortError')) return
+      if (signal.aborted || (error instanceof DOMException && error.name === 'AbortError')) {
+        outcome = 'cancelled'
+        return
+      }
+      outcome = 'failure'
       if ((error as { transient?: boolean }).transient) {
-        if (this.queue.isCurrent(path, generation)) this.queue.enqueue({ path, watchedRoot, force })
+        if (this.queue.isCurrent(path, generation)) this.enqueue(path, watchedRoot, force)
         return
       }
       if (this.queue.isCurrent(path, generation)) {
-        await this.writeStatus(path, watchedRoot, 'error', String(error)).catch(() => undefined)
+        await this.mutateIfCurrent(path, generation, signal, 'error-status', () =>
+          this.writeStatus(path, watchedRoot, 'error', 'Indexing failed.')
+        ).catch(() => undefined)
       }
+    } finally {
+      this.metrics?.record('file-ingestion', performance.now() - startedAt, outcome)
     }
   }
 }

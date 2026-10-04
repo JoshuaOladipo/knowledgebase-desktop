@@ -2,17 +2,22 @@
 
 ## Status
 
-PC Agent currently implements the indexing half of the RAG system:
+PC Agent currently implements the indexing, retrieval, orchestration-contract, and persistence
+foundations of the RAG system:
 
 - Folder watching and restart restoration.
 - Embedded Turso storage and versioned migrations.
 - Local file policy, extraction, chunking, and ingestion reconciliation.
 - Deterministic local embeddings stored as Turso vectors.
 - Text, Markdown, DOCX, PPTX, XLSX, ODT, ODP, ODS, PDF, RTF, and EPUB extraction.
+- Exact compatible-vector retrieval, bounded evidence selection, and insufficient-context results.
+- Provider-neutral grounded generation orchestration with structured citations.
+- A loopback-only OpenAI-compatible generation provider with persistent bounded settings.
+- Typed ask, cancel, settings, conversation read/list/delete IPC and a grounded chat UI.
+- Durable conversations, messages, and immutable citation snapshots retained until explicit deletion.
 
-Semantic retrieval, answer generation, chat IPC, conversation persistence, citations, and the chat UI
-remain planned. This document describes both the implemented foundation and the target architecture;
-sections label planned behavior explicitly.
+Index-state/re-index/reveal IPC, indexing UI, retrieval benchmarks, and broader packaged verification
+remain planned.
 
 ## Goals
 
@@ -49,11 +54,12 @@ flowchart LR
 
     UI[React renderer] -->|typed bridge| PL[Preload]
     PL --> MAIN[Main-process IPC]
-    MAIN --> RAG[Planned RagService]
+    MAIN --> RAG[GroundedAnswerService]
     RAG --> EP
-    RAG --> RET[Planned Retriever]
+    RAG --> RET[TursoVectorRetriever]
     RET --> DB
-    RAG --> GP[Planned GenerationProvider]
+    RAG --> GP[Loopback GenerationProvider]
+    GP --> LS[User-managed local server]
     RAG -->|answer and sources| MAIN
     MAIN --> PL
     PL --> UI
@@ -75,8 +81,8 @@ and closes services during shutdown.
 
 `src/main/watcher.ts` validates roots, owns one Chokidar watcher, maintains a metadata snapshot, and
 emits serializable add/change/unlink events. It does not parse documents or access Turso. Root paths
-are canonicalized, but descendant event paths are not yet canonicalized and Chokidar currently follows
-directory symlinks by default; IDX-004 tracks the required containment fix.
+and directory-symlink traversal is disabled. Ingestion canonicalizes each descendant immediately
+before access and reads one bounded snapshot.
 
 ### Database
 
@@ -85,6 +91,7 @@ directory symlinks by default; IDX-004 tracks the required containment fix.
 - The single embedded Turso connection.
 - Ordered migrations in `schema_migrations`.
 - `documents` and `chunks` tables.
+- `conversations`, `messages`, and immutable `message_citations` snapshots.
 - Generalized page, slide, sheet, chapter, and section metadata.
 - Transactional replacement of a document and all its chunks.
 
@@ -95,12 +102,12 @@ implemented.
 
 `src/main/ingestion/` owns file classification, extraction, chunking, fingerprints, the bounded queue,
 and restart reconciliation. Work is keyed by the watcher event path; a newer generation aborts older
-work, but generation freshness is not yet enforced inside the database commit boundary.
+work, and mutations share a serialized boundary that rechecks generation and active-root membership.
 
 The file policy currently rejects a symlink in the final path component, non-files, ignored
 directories, unsupported extensions, unreadable files, invalid UTF-8 text, and input files over 10 MB.
-It does not yet prevent traversal through an intermediate directory symlink or a path swap between
-validation and extraction. OfficeParser additionally applies archive and spreadsheet resource limits.
+Intermediate directory symlinks, final symlinks, inode swaps, and canonical targets outside the active
+root are rejected. OfficeParser additionally applies archive and spreadsheet resource limits.
 
 ### Embeddings
 
@@ -121,34 +128,23 @@ For an add or change event:
 6. Extract normalized text and source sections.
 7. Produce deterministic structure-aware chunks.
 8. Generate embeddings in bounded batches.
-9. Recheck cancellation and generation freshness immediately before replacement.
+9. Recheck cancellation, generation freshness, and active-root membership inside the serialized
+   mutation boundary.
 10. Transactionally replace the document and its chunks.
 
 For deletion, pending work is cancelled and the durable document is removed. On startup, current
 watched files are compared with durable documents so missed changes are repaired.
 
-The lifecycle is only partially hardened. The check in step 9 is outside the transaction, deletion is
-not serialized with pending status writes, and a successful empty/non-indexable replacement updates
-the document without clearing previous chunks. IDX-005 requires freshness and active-root validation
-inside the serialized mutation, deletion tombstone safety, and atomic zero-chunk replacement.
+Deletion and reconciliation use the same serialization boundary. Successful empty/non-indexable
+replacements atomically clear prior chunks, while extraction or embedding failures retain prior chunks
+under a non-indexed document status.
 
-## Known integrity and security gaps
+## Remaining integrity and security verification
 
-The implemented foundation must not be treated as retrieval-ready until these gaps are resolved:
-
-- A directory symlink below a watched root can cause Chokidar to emit a lexically in-root path whose
-  canonical target is outside the managed root.
-- Hashing and extraction reopen the source path independently, so a path swap can make persisted
-  fingerprints describe different bytes from the indexed chunks.
-- A file that changes to empty or otherwise non-indexable content can retain old chunks; a later
-  unchanged scan can mark that record indexed again.
-- A newer generation or deletion can arrive after the last freshness check but before an older
-  database transaction commits.
-- IPC handlers validate folder values indirectly but do not yet enforce a trusted sender-frame/origin
-  policy, and top-level renderer navigation is not explicitly denied.
-
-These are verified gaps in the current implementation, not descriptions of planned behavior. Work is
-tracked by IDX-004, IDX-005, HARD-003, and RAGX-004 in the active task records.
+Canonical containment, snapshot consistency, serialized freshness/deletion, zero-chunk replacement,
+IPC sender validation, and navigation denial are implemented. Remaining verification includes broader
+path-swap/platform cases, additional interruption interleavings, and installed Windows/macOS package
+checks. Work is tracked by IDX-001/002/004/005, HARD-003, and RAGX-004.
 
 ## Data model
 
@@ -158,11 +154,10 @@ fingerprints, indexing status, sanitized failure information, and timestamps.
 `chunks` stores document ownership, stable order, normalized content, token estimate, offsets,
 heading/source metadata, embedding bytes, provider/model identity, dimensions, and creation time.
 
-Planned retrieval/chat work adds conversations, messages, and immutable message-source snapshots or
-equivalent evidence records. Citation history must not silently change when a source document is later
-re-indexed.
+`conversations` and `messages` retain local history until explicit deletion. `message_citations` stores
+immutable evidence snapshots so citation history does not change when a source is later re-indexed.
 
-## Planned retrieval and answer flow
+## Retrieval and answer flow
 
 1. Validate the question and optional source filters in the main process.
 2. Embed the question with the same compatible embedding configuration used for chunks.
@@ -173,29 +168,49 @@ re-indexed.
 7. Return an insufficient-context result when no suitable evidence remains.
 8. Delimit and label untrusted evidence in a grounded prompt.
 9. Invoke a provider-neutral `GenerationProvider`.
-10. Persist the answer and exact evidence, then return structured citations.
+10. Atomically persist the answer and exact evidence, then return structured citations.
+
+Steps 1–10 are composed at runtime with the approved user-managed local server provider. Generation
+is disabled by default and can only target HTTP(S) on `localhost`, `127.0.0.1`, or `[::1]`. Requests
+are non-streaming, bounded, cancellable, credential-free, and reject redirects.
 
 Retrieval remains behind an interface so hybrid lexical search, reranking, or approximate vector
 indexes can be introduced without changing the renderer contract.
 
-## Planned IPC surface
+## IPC surface
 
-New preload operations will remain task-oriented:
+Implemented preload operations remain task-oriented:
 
-- Read index and per-document state.
-- Subscribe to indexing events.
-- Re-index selected documents or active roots.
-- Ask and cancel a question using a request identifier.
-- Read and delete conversations.
-- Reveal a validated cited file through a separate native operation.
+- Read and update bounded local generation settings.
+- Ask and cancel a question using an opaque request identifier.
+- Read, list, and delete conversations.
+- Read aggregate and per-document index state.
+- Re-index active roots and retry a document by opaque identifier.
+- Reveal a currently indexed citation only after database, active-root, symlink, and canonical-path
+  validation.
+- Read, clear, and export content-free local diagnostic aggregates.
+
+Still planned:
+
+- Push indexing-event subscription; the current UI polls bounded snapshots.
 
 No IPC method will accept arbitrary SQL, unrestricted paths, credentials, or provider SDK objects.
+
+## Local diagnostics policy
+
+Operational diagnostics are aggregate and local only. They record document/chunk counts, queue depth,
+document stages, database size, categorized operation outcomes, and timing for ingestion, embedding,
+retrieval, and generation. They never retain document text, embeddings, prompts, answers, credentials,
+parser payloads, or filenames. Aggregates live only in memory until explicit clearing or application
+restart. A user may export the same redacted snapshot to JSON through a native save dialog. Telemetry
+is disabled and there is no remote transmission path.
 
 ## Design decisions
 
 - Use embedded Turso for local durable state; see ADR-001.
 - Keep privileged RAG capabilities in the main process; see ADR-002.
 - Use a constrained OfficeParser adapter for structured formats; see ADR-003.
+- Use a user-managed loopback OpenAI-compatible generation server; see ADR-004.
 - Keep watcher and ingestion responsibilities separate.
 - Replace chunks atomically so failed indexing preserves the previous valid index.
 - Treat canonical containment and commit freshness as database-ingestion invariants, not best-effort
@@ -206,8 +221,7 @@ No IPC method will accept arbitrary SQL, unrestricted paths, credentials, or pro
 - Treat structured retrieval records, not model-written citation markup, as citation truth.
 - Start with exact cosine-distance retrieval and benchmark before adding complexity.
 
-All three ADRs are currently `Proposed` because the framework requires explicit approval for the
-protected datastore, external dependency, and cross-component ownership choices.
+ADR-001, ADR-002, ADR-003, and ADR-004 were explicitly approved on 2026-10-03.
 
 ## Failure and recovery policy
 
@@ -235,14 +249,12 @@ protected datastore, external dependency, and cross-component ownership choices.
 
 ## Open decisions
 
-1. Which generation provider is implemented first?
-2. Is a stronger local embedding model required before retrieval ships?
-3. What distance threshold and context limits provide acceptable quality?
-4. Does stopping a watched root retain or remove its durable index?
-5. Should conversation history be enabled by default?
-6. Is database encryption at rest required, and how is its key recovered?
-7. Is macOS x64 a supported release target?
-8. When do hybrid retrieval, reranking, or approximate vector indexing become justified?
+1. Is a stronger local embedding model required before retrieval ships?
+2. What distance threshold and context limits provide acceptable quality?
+3. Should conversation history remain enabled by default?
+4. Is database encryption at rest required, and how is its key recovered?
+5. Is macOS x64 a supported release target?
+6. When do hybrid retrieval, reranking, or approximate vector indexing become justified?
 
 ## Related plans and operations
 
@@ -250,5 +262,5 @@ protected datastore, external dependency, and cross-component ownership choices.
 - `tasks/active/rag-security-reliability-and-future.md` covers configuration, privacy, diagnostics,
   recovery, format evaluation, end-to-end verification, and deferred enhancements.
 - `tasks/active/indexing-release-verification.md` covers containment and commit-integrity hardening,
-  remaining extractor fixtures, packaged verification, and architecture approval.
+  remaining encrypted-document coverage, and packaged verification.
 - `docs/release-checklist.md` defines platform and packaged-runtime verification.

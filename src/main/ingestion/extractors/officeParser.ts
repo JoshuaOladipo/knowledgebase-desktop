@@ -212,7 +212,7 @@ export const officeParserExtractor: TextExtractor = {
       onWarning: (issue) => warnings.push(sanitizedWarning(issue))
     }
     try {
-      const ast = await OfficeParser.parseOffice(request.path, config)
+      const ast = await OfficeParser.parseOffice(request.bytes, config)
       if (request.signal?.aborted) {
         throw new DOMException('Extraction was cancelled.', 'AbortError')
       }

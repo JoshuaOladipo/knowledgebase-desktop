@@ -55,6 +55,45 @@ const migrations: Migration[] = [
       ALTER TABLE chunks ADD COLUMN source_index INTEGER;
       ALTER TABLE chunks ADD COLUMN source_label TEXT;
     `
+  },
+  {
+    version: 3,
+    sql: `
+      CREATE TABLE conversations (
+        id TEXT PRIMARY KEY NOT NULL,
+        title TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE messages (
+        id TEXT PRIMARY KEY NOT NULL,
+        conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
+        content TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE TABLE message_citations (
+        id TEXT PRIMARY KEY NOT NULL,
+        message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+        ordinal INTEGER NOT NULL,
+        source_id TEXT NOT NULL,
+        chunk_id TEXT NOT NULL,
+        document_id TEXT NOT NULL,
+        document_path TEXT NOT NULL,
+        document_name TEXT NOT NULL,
+        heading TEXT,
+        source_kind TEXT,
+        source_index INTEGER,
+        source_label TEXT,
+        excerpt TEXT NOT NULL,
+        UNIQUE(message_id, ordinal)
+      );
+
+      CREATE INDEX messages_conversation_idx ON messages(conversation_id, created_at);
+      CREATE INDEX message_citations_message_idx ON message_citations(message_id, ordinal);
+    `
   }
 ]
 

@@ -31,6 +31,27 @@ export class DocumentRepository {
     return row ? mapDocument(row) : null
   }
 
+  async getById(id: string): Promise<DocumentRecord | null> {
+    const row = (await this.database.get('SELECT * FROM documents WHERE id = ?', id)) as
+      DocumentRow | undefined
+    return row ? mapDocument(row) : null
+  }
+
+  async listWithChunkCounts(): Promise<Array<DocumentRecord & { chunkCount: number }>> {
+    const rows = (await this.database.all(
+      `SELECT d.*, COUNT(c.id) AS chunk_count
+       FROM documents d LEFT JOIN chunks c ON c.document_id = d.id
+       GROUP BY d.id ORDER BY d.path`
+    )) as DocumentRow[]
+    return rows.map((row) => ({ ...mapDocument(row), chunkCount: Number(row.chunk_count) }))
+  }
+
+  async countChunks(): Promise<number> {
+    const row = (await this.database.get('SELECT COUNT(*) AS count FROM chunks')) as
+      { count: number } | undefined
+    return Number(row?.count ?? 0)
+  }
+
   async list(): Promise<DocumentRecord[]> {
     const rows = (await this.database.all('SELECT * FROM documents ORDER BY path')) as DocumentRow[]
     return rows.map(mapDocument)

@@ -58,6 +58,10 @@ export class IngestionQueue {
     return this.generations.get(path) === generation
   }
 
+  getState(): { pendingJobs: number; activeWorkers: number } {
+    return { pendingJobs: this.pending.size, activeWorkers: this.activeWorkers }
+  }
+
   async onIdle(): Promise<void> {
     if (this.activeWorkers === 0 && this.pending.size === 0) return
     await new Promise<void>((resolve) => this.idleResolvers.add(resolve))

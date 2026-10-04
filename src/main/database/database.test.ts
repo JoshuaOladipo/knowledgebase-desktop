@@ -65,7 +65,8 @@ describe('knowledge-base database', () => {
     await documents.upsert(document)
     expect(await database.all('SELECT version FROM schema_migrations')).toEqual([
       { version: 1 },
-      { version: 2 }
+      { version: 2 },
+      { version: 3 }
     ])
     const columns = (await database.all('PRAGMA table_info(chunks)')) as Array<{ name: string }>
     expect(columns.map(({ name }) => name)).toEqual(
@@ -80,7 +81,8 @@ describe('knowledge-base database', () => {
     )
     expect(await reopenedDatabase.all('SELECT version FROM schema_migrations')).toEqual([
       { version: 1 },
-      { version: 2 }
+      { version: 2 },
+      { version: 3 }
     ])
     await reopened.close()
   })
@@ -151,5 +153,28 @@ describe('knowledge-base database', () => {
       chunks.replaceDocument(document, [{ ...chunk(), embeddingDimensions: 4 }])
     ).rejects.toThrow('invalid embedding')
     await service.close()
+  })
+
+  it('rolls back an interrupted migration without recording a partial version', async () => {
+    const folder = await mkdtemp(join(tmpdir(), 'pc-agent-db-migration-failure-'))
+    temporaryFolders.push(folder)
+    const path = join(folder, 'knowledge-base.db')
+    const legacy = await connect(path)
+    await legacy.exec(`
+      CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
+      INSERT INTO schema_migrations VALUES (1, '2026-01-01'), (2, '2026-01-01');
+      CREATE TABLE messages(conflict TEXT);
+    `)
+    await legacy.close()
+
+    await expect(new DatabaseService(path).open()).rejects.toThrow('Could not open or migrate')
+    const inspected = await connect(path)
+    expect(
+      await inspected.get("SELECT name FROM sqlite_master WHERE name = 'conversations'")
+    ).toBeUndefined()
+    expect(
+      await inspected.get('SELECT version FROM schema_migrations WHERE version = 3')
+    ).toBeUndefined()
+    await inspected.close()
   })
 })

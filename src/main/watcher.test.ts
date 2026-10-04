@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -26,6 +26,7 @@ describe('watcher utilities', () => {
     const file = join(folder, 'not-a-folder.txt')
     await writeFile(file, 'content')
     await expect(validateFolders([file])).rejects.toThrow('not a directory')
+    await expect(validateFolders([join(folder, 'missing')])).rejects.toThrow()
   })
 
   it('converts file-system metadata to a serializable entry', async () => {
@@ -70,5 +71,55 @@ describe('watcher utilities', () => {
     expect((await service.stop()).phase).toBe('idle')
     expect(service.getFiles()).toEqual([])
     expect(states.map((state) => state.phase)).toContain('loading')
+  })
+
+  it('does not traverse directory symlinks outside a watched root', async () => {
+    const folder = await temporaryFolder()
+    const outside = await temporaryFolder()
+    const external = join(outside, 'external.txt')
+    await writeFile(external, 'must stay outside')
+    await symlink(outside, join(folder, 'linked'))
+    const paths: string[] = []
+    let ready: (() => void) | undefined
+    const readyPromise = new Promise<void>((resolve) => {
+      ready = resolve
+    })
+    const service = new WatcherService(
+      (event) => paths.push(event.path),
+      (state) => {
+        if (state.phase === 'watching') ready?.()
+      }
+    )
+    await service.start([folder])
+    await readyPromise
+    expect(paths).not.toContain(join(folder, 'linked', 'external.txt'))
+    await service.stop()
+  })
+
+  it('publishes a complete initial snapshot before the watching state', async () => {
+    const folder = await temporaryFolder()
+    await writeFile(join(folder, 'first.txt'), 'first')
+    await writeFile(join(folder, 'second.txt'), 'second')
+    let snapshotAtReady: string[] = []
+    let ready!: () => void
+    const readyPromise = new Promise<void>((resolve) => {
+      ready = resolve
+    })
+    const service = new WatcherService(
+      () => undefined,
+      (state) => {
+        if (state.phase === 'watching') {
+          snapshotAtReady = service
+            .getFiles()
+            .filter(({ isDirectory }) => !isDirectory)
+            .map(({ name }) => name)
+          ready()
+        }
+      }
+    )
+    await service.start([folder])
+    await readyPromise
+    expect(snapshotAtReady.sort()).toEqual(['first.txt', 'second.txt'])
+    await service.stop()
   })
 })

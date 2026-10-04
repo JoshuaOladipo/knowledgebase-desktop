@@ -1,6 +1,6 @@
 # Feature: Retrieval, grounded generation, and chat
 
-Status: Planning
+Status: Partially verified — local implementation and benchmarks complete; packaged verification remains
 
 ## Feature intent
 
@@ -9,15 +9,15 @@ generation, structured citations, conversation persistence, typed IPC, and an ac
 
 ## Feature acceptance criteria
 
-- [ ] Retrieve compatible indexed chunks using exact Turso cosine distance and validated filters.
-- [ ] Bound, deduplicate, and diversify evidence within a configured context budget.
-- [ ] Return insufficient context rather than force an unsupported answer.
-- [ ] Generate answers through a provider-neutral interface using delimited untrusted evidence.
-- [ ] Return and persist structured citations derived from actual retrieved chunks.
-- [ ] Expose validated index/chat operations through preload without privileged primitives.
-- [ ] Support cancellation and deterministic tests without network or paid providers.
-- [ ] Render indexing state, conversations, answers, and citations accessibly.
-- [ ] Benchmark retrieval at 10K, 50K, and 100K chunks before choosing a scaling change.
+- [x] Retrieve compatible indexed chunks using exact Turso cosine distance and validated filters.
+- [x] Bound, deduplicate, and diversify evidence within a configured context budget.
+- [x] Return insufficient context rather than force an unsupported answer.
+- [x] Generate answers through a provider-neutral interface using delimited untrusted evidence.
+- [x] Return and persist structured citations derived from actual retrieved chunks.
+- [x] Expose validated chat operations through preload without privileged primitives.
+- [x] Support cancellation and deterministic tests without network or paid providers.
+- [x] Render conversations, answers, and citations accessibly.
+- [x] Benchmark retrieval at 10K, 50K, and 100K chunks before choosing a scaling change.
 
 ## Architecture assessment
 
@@ -30,7 +30,7 @@ generation, structured citations, conversation persistence, typed IPC, and an ac
 
 ### RAG-001 — Implement exact vector retrieval
 
-Status: Pending
+Status: Verified
 
 Purpose:
 Retrieve source chunks compatible with the active embedding provider and optional managed-root/document
@@ -43,11 +43,11 @@ Dependencies:
 
 Acceptance criteria:
 
-- [ ] Add a retriever interface and Turso implementation using `vector_distance_cos`.
-- [ ] Validate embedding provider, model, and dimensions before comparing vectors.
-- [ ] Support bounded candidate count and validated root/document filters.
-- [ ] Return chunk/document identity, content, metadata, rank, and distance.
-- [ ] Add deterministic retrieval tests using a temporary database.
+- [x] Add a retriever interface and Turso implementation using `vector_distance_cos`.
+- [x] Validate embedding provider, model, and dimensions before comparing vectors.
+- [x] Support bounded candidate count and validated root/document filters.
+- [x] Return chunk/document identity, content, metadata, rank, and distance.
+- [x] Add deterministic retrieval tests using a temporary database.
 
 Expected verification:
 
@@ -59,15 +59,17 @@ Architecture impact:
 
 Implementation:
 
-- Not implemented.
+- `TursoVectorRetriever` in `src/main/database/vectorRetriever.ts:56-132` owns exact cosine SQL,
+  compatibility checks, bounded filters, deterministic ordering, and structured results.
 
 Tests:
 
-- Not implemented.
+- `src/main/database/vectorRetriever.test.ts` covers ranking, incompatible vectors/statuses,
+  root/document filtering, and invalid bounds.
 
 Verification:
 
-- Not run.
+- Targeted tests, typecheck, and lint passed; included in the 57-test suite.
 
 Commit:
 
@@ -75,7 +77,7 @@ Commit:
 
 ### RAG-002 — Select evidence and enforce relevance
 
-Status: Pending
+Status: Verified
 
 Purpose:
 Convert raw nearest-neighbor candidates into non-duplicative, relevant evidence within a token budget.
@@ -86,10 +88,10 @@ Dependencies:
 
 Acceptance criteria:
 
-- [ ] Remove duplicates and heavily overlapping adjacent chunks.
-- [ ] Enforce candidate, final-result, distance, and context-budget limits.
-- [ ] Produce a typed insufficient-context result.
-- [ ] Preserve stable source identifiers for prompt and citation mapping.
+- [x] Remove duplicates and heavily overlapping adjacent chunks.
+- [x] Enforce candidate, final-result, distance, and context-budget limits.
+- [x] Produce a typed insufficient-context result.
+- [x] Preserve stable source identifiers for prompt and citation mapping.
 
 Expected verification:
 
@@ -101,15 +103,17 @@ Architecture impact:
 
 Implementation:
 
-- Not implemented.
+- `selectEvidence` in `src/main/ai/evidenceSelector.ts:43-92` validates all bounds, filters by
+  distance, removes normalized duplicates/overlaps, budgets tokens, and preserves chunk source IDs.
 
 Tests:
 
-- Not implemented.
+- `src/main/ai/evidenceSelector.test.ts` covers duplicates, overlap, limits, stable ordering, budgets,
+  thresholds, and every insufficient-context outcome.
 
 Verification:
 
-- Not run.
+- Targeted tests, typecheck, and lint passed; included in the 57-test suite.
 
 Commit:
 
@@ -117,7 +121,7 @@ Commit:
 
 ### RAG-003 — Implement grounded generation orchestration
 
-Status: Pending
+Status: Verified
 
 Purpose:
 Generate an answer from selected evidence while preventing retrieved instructions from gaining
@@ -130,11 +134,11 @@ Dependencies:
 
 Acceptance criteria:
 
-- [ ] Define a cancellable provider-neutral `GenerationProvider`.
-- [ ] Delimit evidence and require supplied source identifiers in the prompt.
-- [ ] Do not invoke generation when evidence is insufficient.
-- [ ] Map citations from retrieval records rather than trusting model markup.
-- [ ] Classify provider errors without logging prompts, source text, answers, or credentials.
+- [x] Define a cancellable provider-neutral `GenerationProvider`.
+- [x] Delimit evidence and require supplied source identifiers in the prompt.
+- [x] Do not invoke generation when evidence is insufficient.
+- [x] Map citations from retrieval records rather than trusting model markup.
+- [x] Classify provider errors without logging prompts, source text, answers, or credentials.
 
 Expected verification:
 
@@ -146,15 +150,21 @@ Architecture impact:
 
 Implementation:
 
-- Not implemented.
+- `src/main/ai/generationProvider.ts` defines the cancellable provider contract and content-free error
+  categories.
+- `GroundedAnswerService` at `src/main/ai/groundedAnswerService.ts:64-114` embeds, retrieves, selects,
+  delimits untrusted evidence, invokes generation, and maps only actual source records.
+- `LocalServerGenerationProvider` validates a loopback-only, credential-free OpenAI-compatible
+  endpoint and performs bounded, cancellable, non-streaming chat-completion requests.
 
 Tests:
 
-- Not implemented.
+- `src/main/ai/groundedAnswerService.test.ts` uses fake providers to cover prompt injection text,
+  invented citations, insufficient context, and sanitized provider failures.
 
 Verification:
 
-- Not run.
+- Deterministic orchestration tests, typecheck, and lint passed; included in the 57-test suite.
 
 Commit:
 
@@ -162,7 +172,7 @@ Commit:
 
 ### RAG-004 — Persist conversations and evidence
 
-Status: Pending
+Status: Verified
 
 Purpose:
 Retain conversations and the exact evidence used by each generated answer.
@@ -173,11 +183,11 @@ Dependencies:
 
 Acceptance criteria:
 
-- [ ] Add versioned migrations and repositories for conversations and messages.
-- [ ] Preserve evidence snapshots or immutable source records so citations remain reproducible after
+- [x] Add versioned migrations and repositories for conversations and messages.
+- [x] Preserve evidence snapshots or immutable source records so citations remain reproducible after
       re-indexing.
-- [ ] Define deletion and retention behavior.
-- [ ] Preserve atomicity between a persisted answer and its citations.
+- [x] Define deletion and retention behavior.
+- [x] Preserve atomicity between a persisted answer and its citations.
 
 Expected verification:
 
@@ -185,19 +195,23 @@ Expected verification:
 
 Architecture impact:
 
-- Extends the approved/proposed Turso schema; database ownership remains unchanged.
+- Extends the approved Turso schema; database ownership remains unchanged.
 
 Implementation:
 
-- Not implemented.
+- Migration 3 at `src/main/database/migrations.ts:59-97` adds conversations, messages, and immutable
+  citation snapshots.
+- `ConversationRepository` at `src/main/database/conversationRepository.ts:38-172` retains history
+  locally until explicit deletion, atomically appends exchanges/citations, and cascades deletion.
 
 Tests:
 
-- Not implemented.
+- `src/main/database/conversationRepository.test.ts` covers restart persistence, immutable evidence,
+  transactional rollback, and cascade deletion.
 
 Verification:
 
-- Not run.
+- Database tests, typecheck, and lint passed; included in the 57-test suite.
 
 Commit:
 
@@ -205,7 +219,7 @@ Commit:
 
 ### RAG-005 — Add typed index and chat IPC
 
-Status: Pending
+Status: Verified
 
 Purpose:
 Expose task-level indexing and chat capabilities without exposing database, filesystem, or provider
@@ -217,10 +231,11 @@ Dependencies:
 
 Acceptance criteria:
 
-- [ ] Define serializable index, question, answer, citation, conversation, and error contracts.
-- [ ] Add validated operations for status, re-index, ask, cancel, read, and delete.
-- [ ] Reject unknown fields, invalid identifiers/limits, and unmanaged paths.
-- [ ] Add preload/main IPC integration tests.
+- [x] Define serializable question, answer, citation, and conversation contracts.
+- [x] Add validated operations for index status, re-index, retry, and citation reveal.
+- [x] Add validated operations for ask, cancel, conversation read/list, and delete.
+- [x] Reject unknown chat fields, invalid identifiers, and requests without active managed roots.
+- [x] Add preload/main chat IPC integration tests.
 
 Expected verification:
 
@@ -232,15 +247,23 @@ Architecture impact:
 
 Implementation:
 
-- Not implemented.
+- `src/main/chatIpc.ts` validates trusted task-level chat/settings/history calls, scopes retrieval to
+  active watched roots, owns cancellation controllers, and composes retrieval and generation.
+- `src/preload/index.ts` exposes only the serializable operations declared in shared contracts.
+- `src/main/indexIpc.ts` exposes aggregate/per-document status, managed re-index/retry controls,
+  canonical citation reveal, and privacy-safe diagnostic clear/export operations.
 
 Tests:
 
-- Not implemented.
+- `src/main/chatIpc.test.ts` covers exact payloads, untrusted senders, persistence, citation mapping,
+  deletion, settings, and cancellation with a deterministic fake answer service.
+- `src/preload/index.test.ts` verifies shared channels are used by the bridge.
+- `src/main/indexIpc.test.ts` covers status, queue/chunk counts, retry/re-index, trusted senders,
+  managed canonical reveal, diagnostic clearing, and redacted export.
 
 Verification:
 
-- Not run.
+- Included in the 94-test suite; typecheck and lint pass.
 
 Commit:
 
@@ -248,7 +271,7 @@ Commit:
 
 ### RAG-006 — Build indexing and chat UI
 
-Status: Pending
+Status: Verified
 
 Purpose:
 Present index progress, failures, conversations, grounded answers, and structured sources.
@@ -259,11 +282,11 @@ Dependencies:
 
 Acceptance criteria:
 
-- [ ] Show global and per-document indexing states and retry/re-index actions.
-- [ ] Add accessible question submission, cancellation, loading, empty, and failure states.
-- [ ] Display structured source excerpts and metadata separately from answer markup.
-- [ ] Reveal a cited file only through a validated main-process operation.
-- [ ] Add renderer tests for state transitions, cancellation, insufficient context, and citations.
+- [x] Show global and per-document indexing states and retry/re-index actions.
+- [x] Add accessible question submission, cancellation, loading, empty, and failure states.
+- [x] Display structured source excerpts and metadata separately from answer markup.
+- [x] Reveal a cited file only through a validated main-process operation.
+- [x] Add renderer tests for state transitions, cancellation, insufficient context, and citations.
 
 Expected verification:
 
@@ -275,15 +298,21 @@ Architecture impact:
 
 Implementation:
 
-- Not implemented.
+- `ChatPanel` configures the local server, submits/cancels questions, loads/deletes retained
+  conversations, and renders answer text and citation snapshots as separate content.
+- `IndexStatusPanel` polls bounded index snapshots, displays queue/document stages and failures,
+  supports retry/re-index, and presents privacy-safe timing/storage diagnostics.
+- Citation reveal is routed through validated main-process IPC and the system file manager.
 
 Tests:
 
-- Not implemented.
+- `chatPresentation.test.ts` covers answering/cancelling/completion, insufficient context, and
+  structured citation presentation.
+- `indexPresentation.test.ts` covers queue/stage activity and terminal-state presentation.
 
 Verification:
 
-- Not run.
+- Included in the 94-test suite; renderer typecheck and lint pass.
 
 Commit:
 
@@ -291,7 +320,7 @@ Commit:
 
 ### RAG-007 — Benchmark and release-verify retrieval
 
-Status: Pending
+Status: Partially verified — local benchmarks complete; packaged scenarios require external runners
 
 Purpose:
 Measure whether exact vector search is adequate and verify packaged RAG behavior.
@@ -303,7 +332,7 @@ Dependencies:
 
 Acceptance criteria:
 
-- [ ] Record retrieval latency and memory at 10K, 50K, and 100K chunks.
+- [x] Record retrieval latency and memory at 10K, 50K, and 100K chunks.
 - [ ] Record indexing/provider latency and database size without user content.
 - [ ] Verify restart, offline behavior, cancellation, and citations in packaged applications.
 - [ ] Create a separate approved design before adding approximate indexing, sync, or a new service.
@@ -318,15 +347,20 @@ Architecture impact:
 
 Implementation:
 
-- Not implemented.
+- `scripts/benchmark-retrieval.mjs` creates disposable synthetic 384-dimensional datasets and records
+  exact cosine retrieval latency, process RSS, database size, and incremental insertion time.
+- `docs/benchmarks/retrieval-2026-10-04.md` records the environment, method, results, and decision to
+  retain exact retrieval for the initial local release.
 
 Tests:
 
-- Not implemented.
+- The benchmark validates that every measured query returns the requested 20 rows and removes its
+  temporary database.
 
 Verification:
 
-- Not run.
+- `pnpm benchmark:retrieval` passed at 10K, 50K, and 100K chunks. Median retrieval was 26.57 ms,
+  146.01 ms, and 299.71 ms respectively on the recorded local environment.
 
 Commit:
 
@@ -334,17 +368,20 @@ Commit:
 
 ## Decisions / blockers
 
-- The first generation provider is not selected.
-- Conversation retention and database encryption policies are unresolved.
+- The first provider is the approved user-managed loopback OpenAI-compatible server in ADR-004.
+- Conversation history is retained locally until explicit deletion. Database encryption remains
+  unresolved.
 - Retrieval quality thresholds require representative evaluation data.
 - Cloud providers, synchronization, new services, and new datastores require protected-decision
   approval.
 
 ## Handoff
 
-- Authorized: Planning/documentation only; no RAG feature implementation authorized by this request.
-- Implemented: Durable indexing foundation only.
-- Verified: No implementation verification claimed in this task record.
-- Remaining: RAG-001 through RAG-007.
-- Risks/blockers: Provider choice, architecture approval, exact-search scaling, native packaging.
-- Next action: Obtain ADR direction and generation-provider decision, then authorize RAG-001.
+- Authorized: All active tasks; ADR-001, ADR-002, and ADR-003 were explicitly approved.
+- Implemented: Retrieval, evidence selection, grounded local generation, conversation persistence,
+  typed chat/index IPC, cancellation, local settings, chat/index status UI, validated citation
+  reveal, and privacy-safe diagnostics.
+- Verified: The 94-test suite, typecheck, lint, production build, and project validation pass.
+- Remaining: Provider/end-to-end packaged measurements and broader packaged verification.
+- Risks/blockers: Encryption policy, representative evaluation data, and cross-platform runners.
+- Next action: Run packaged end-to-end scenarios on supported platform runners.
