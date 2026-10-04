@@ -23,6 +23,105 @@ export interface WatcherState {
   error?: string
 }
 
+export interface GenerationServerSettings {
+  enabled: boolean
+  endpoint: string
+  model: string
+  requestTimeoutMs: number
+  maximumOutputTokens: number
+  temperature: number
+}
+
+export interface ChatCitation {
+  sourceId: string
+  documentPath: string
+  documentName: string
+  heading: string | null
+  sourceLabel: string | null
+  excerpt: string
+}
+
+export type AnswerGrounding = 'documents' | 'model'
+
+export type ChatAnswer =
+  | { kind: 'insufficient-context'; reason: string }
+  | { kind: 'answer'; text: string; citations: ChatCitation[]; grounding: AnswerGrounding }
+
+export interface ConversationSummary {
+  id: string
+  title: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ChatMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  citations: ChatCitation[]
+  grounding: AnswerGrounding | null
+  createdAt: string
+}
+
+export interface ConversationDetails extends ConversationSummary {
+  messages: ChatMessage[]
+}
+
+export interface AskQuestionRequest {
+  requestId: string
+  conversationId?: string
+  question: string
+}
+
+export interface AskQuestionResult {
+  conversationId?: string
+  answer: ChatAnswer
+}
+
+export type IndexDocumentPhase =
+  'queued' | 'extracting' | 'chunking' | 'embedding' | 'indexed' | 'skipped' | 'error'
+
+export interface IndexDocumentState {
+  id: string
+  path: string
+  name: string
+  status: IndexDocumentPhase
+  error: string | null
+  chunkCount: number
+  updatedAt: string
+}
+
+export interface DiagnosticOperationSummary {
+  operation: string
+  count: number
+  successCount: number
+  failureCount: number
+  cancellationCount: number
+  skippedCount: number
+  totalDurationMs: number
+  maximumDurationMs: number
+  lastRecordedAt: string
+}
+
+export interface DiagnosticsSnapshot {
+  retention: 'memory-until-cleared-or-restart'
+  telemetryEnabled: false
+  operations: DiagnosticOperationSummary[]
+}
+
+export interface IndexStatus {
+  documents: IndexDocumentState[]
+  documentsTotal: number
+  documentsTruncated: boolean
+  counts: Record<IndexDocumentPhase, number>
+  pendingJobs: number
+  activeWorkers: number
+  maintenanceError: string | null
+  chunkCount: number
+  databaseBytes: number
+  diagnostics: DiagnosticsSnapshot
+}
+
 export interface PcAgentApi {
   /** Opens the native directory picker and returns the chosen folder paths. */
   selectFolders(): Promise<string[]>
@@ -38,6 +137,34 @@ export interface PcAgentApi {
   onFileEvent(listener: (event: FileEvent) => void): () => void
   /** Subscribes to watcher lifecycle changes and returns an unsubscribe function. */
   onWatcherState(listener: (state: WatcherState) => void): () => void
+  /** Returns the user-managed generation server configuration. */
+  getGenerationServerSettings(): Promise<GenerationServerSettings>
+  /** Validates and persists the generation server configuration. */
+  updateGenerationServerSettings(
+    settings: GenerationServerSettings
+  ): Promise<GenerationServerSettings>
+  /** Retrieves local evidence and asks the configured generation server to answer. */
+  askQuestion(request: AskQuestionRequest): Promise<AskQuestionResult>
+  /** Cancels an in-flight question owned by this renderer. */
+  cancelQuestion(requestId: string): Promise<void>
+  /** Lists retained local conversations, most recently updated first. */
+  listConversations(): Promise<ConversationSummary[]>
+  /** Loads one conversation and its citation snapshots. */
+  readConversation(id: string): Promise<ConversationDetails | null>
+  /** Permanently deletes one local conversation. */
+  deleteConversation(id: string): Promise<void>
+  /** Returns aggregate queue, document, storage, and privacy-safe diagnostic state. */
+  getIndexStatus(): Promise<IndexStatus>
+  /** Re-indexes every visible file under the active watched roots. */
+  reindexAll(): Promise<void>
+  /** Retries one managed document by its opaque database identifier. */
+  retryDocument(id: string): Promise<void>
+  /** Reveals a currently indexed managed citation in the system file manager. */
+  revealCitation(documentPath: string): Promise<void>
+  /** Clears in-memory privacy-safe diagnostic aggregates. */
+  clearDiagnostics(): Promise<DiagnosticsSnapshot>
+  /** Exports a redacted diagnostic snapshot through a native save dialog. */
+  exportDiagnostics(): Promise<boolean>
 }
 
 export const ipcChannels = {
@@ -47,5 +174,18 @@ export const ipcChannels = {
   getWatcherState: 'watcher:state:get',
   getWatchedFiles: 'watcher:files:get',
   fileEvent: 'watcher:file-event',
-  watcherState: 'watcher:state'
+  watcherState: 'watcher:state',
+  getGenerationServerSettings: 'generation:settings:get',
+  updateGenerationServerSettings: 'generation:settings:update',
+  askQuestion: 'chat:ask',
+  cancelQuestion: 'chat:cancel',
+  listConversations: 'chat:conversations:list',
+  readConversation: 'chat:conversation:read',
+  deleteConversation: 'chat:conversation:delete',
+  getIndexStatus: 'index:status:get',
+  reindexAll: 'index:reindex-all',
+  retryDocument: 'index:document:retry',
+  revealCitation: 'index:citation:reveal',
+  clearDiagnostics: 'diagnostics:clear',
+  exportDiagnostics: 'diagnostics:export'
 } as const

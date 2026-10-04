@@ -19,6 +19,33 @@ export function filterFiles(files: FileEntry[], query: string): FileEntry[] {
   )
 }
 
+export function activeSelection(files: FileEntry[], selectedPaths: Set<string>): Set<string> {
+  const activePaths = new Set(files.map((file) => file.path))
+  return new Set([...selectedPaths].filter((path) => activePaths.has(path)))
+}
+
+export function currentDetails(
+  files: FileEntry[],
+  detailsFile: FileEntry | null
+): FileEntry | null {
+  return detailsFile ? (files.find((file) => file.path === detailsFile.path) ?? null) : null
+}
+
+/** Toggles only visible paths while preserving selected paths hidden by filtering. */
+export function toggleVisibleSelection(
+  visibleFiles: FileEntry[],
+  selectedPaths: Set<string>
+): Set<string> {
+  if (visibleFiles.length === 0) return selectedPaths
+  const next = new Set(selectedPaths)
+  if (visibleFiles.every((file) => selectedPaths.has(file.path))) {
+    for (const file of visibleFiles) next.delete(file.path)
+  } else {
+    for (const file of visibleFiles) next.add(file.path)
+  }
+  return next
+}
+
 /** Formats a byte count as a compact human-readable file size. */
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`

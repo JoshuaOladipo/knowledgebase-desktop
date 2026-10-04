@@ -4,12 +4,15 @@ import { FilesProvider } from './components/files_table/FilesProvider'
 import { useFiles } from './components/files_table/useFiles'
 import { applyFileEvent } from './fileState'
 import type { FileEvent, WatcherState } from '../../shared/contracts'
+import ChatPanel from './components/ChatPanel'
+import IndexStatusPanel from './components/IndexStatusPanel'
 
 /** Coordinates native watcher actions with the renderer's file state and controls. */
 function Workspace(): React.JSX.Element {
-  const { setFiles } = useFiles()
+  const { files, resetFiles, setFiles } = useFiles()
   const [watcher, setWatcher] = useState<WatcherState>({ folders: [], phase: 'idle' })
   const [actionError, setActionError] = useState<string>()
+  const [actionPending, setActionPending] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -17,20 +20,27 @@ function Workspace(): React.JSX.Element {
     const pendingEvents: FileEvent[] = []
     const removeFileListener = window.pcAgent.onFileEvent((event) => {
       if (!active) return
-      if (hydrating) pendingEvents.push(event)
-      else setFiles((files) => applyFileEvent(files, event))
+      if (hydrating) {
+        pendingEvents.push(event)
+        if (pendingEvents.length > 10_000) pendingEvents.shift()
+      } else setFiles((files) => applyFileEvent(files, event))
     })
     const removeStateListener = window.pcAgent.onWatcherState((state) => {
       if (active) setWatcher(state)
     })
-    void window.pcAgent.getWatcherState().then((state) => {
-      if (active) setWatcher(state)
-    })
-    void window.pcAgent.getWatchedFiles().then((files) => {
-      if (active) {
-        setFiles(pendingEvents.reduce(applyFileEvent, files))
-        hydrating = false
+    void Promise.allSettled([
+      window.pcAgent.getWatcherState(),
+      window.pcAgent.getWatchedFiles()
+    ]).then(([stateResult, filesResult]) => {
+      if (!active) return
+      if (stateResult.status === 'fulfilled') setWatcher(stateResult.value)
+      else setActionError(`Could not load watcher state: ${String(stateResult.reason)}`)
+      const initialFiles = filesResult.status === 'fulfilled' ? filesResult.value : []
+      if (filesResult.status === 'rejected') {
+        setActionError(`Could not load watched files: ${String(filesResult.reason)}`)
       }
+      setFiles(pendingEvents.reduce(applyFileEvent, initialFiles))
+      hydrating = false
     })
     return () => {
       active = false
@@ -42,32 +52,61 @@ function Workspace(): React.JSX.Element {
   /** Prompts for folders and merges the selection into the active watcher. */
   async function addFolders(): Promise<void> {
     setActionError(undefined)
+    setActionPending(true)
     try {
       const selected = await window.pcAgent.selectFolders()
       if (selected.length > 0) {
-        setFiles([])
-        setWatcher(await window.pcAgent.startWatching([...watcher.folders, ...selected]))
+        const previousFiles = files
+        resetFiles()
+        try {
+          setWatcher(await window.pcAgent.startWatching([...watcher.folders, ...selected]))
+        } catch (error) {
+          setFiles(previousFiles)
+          throw error
+        }
       }
     } catch (error) {
       setActionError(String(error))
+    } finally {
+      setActionPending(false)
     }
   }
 
   /** Removes one folder and restarts or stops the watcher as appropriate. */
   async function removeFolder(folder: string): Promise<void> {
     const remaining = watcher.folders.filter((current) => current !== folder)
-    setFiles([])
-    setWatcher(
-      remaining.length > 0
-        ? await window.pcAgent.startWatching(remaining)
-        : await window.pcAgent.stopWatching()
-    )
+    const previousFiles = files
+    setActionError(undefined)
+    setActionPending(true)
+    resetFiles()
+    try {
+      setWatcher(
+        remaining.length > 0
+          ? await window.pcAgent.startWatching(remaining)
+          : await window.pcAgent.stopWatching()
+      )
+    } catch (error) {
+      setFiles(previousFiles)
+      setActionError(String(error))
+    } finally {
+      setActionPending(false)
+    }
   }
 
   /** Stops all watching and clears the renderer's current file collection. */
   async function stopWatching(): Promise<void> {
-    setFiles([])
-    setWatcher(await window.pcAgent.stopWatching())
+    const previousFiles = files
+    setActionError(undefined)
+    setActionPending(true)
+    resetFiles()
+    try {
+      setWatcher(await window.pcAgent.stopWatching())
+    } catch (error) {
+      setFiles(previousFiles)
+      setActionError(String(error))
+    } finally {
+      setActionPending(false)
+    }
   }
 
   return (
@@ -81,13 +120,18 @@ function Workspace(): React.JSX.Element {
             </p>
           </div>
           <div className="flex gap-2">
-            <button className="btn btn-primary" type="button" onClick={() => void addFolders()}>
+            <button
+              className="btn btn-primary"
+              type="button"
+              disabled={actionPending}
+              onClick={() => void addFolders()}
+            >
               Add folder
             </button>
             <button
               className="btn btn-outline"
               type="button"
-              disabled={watcher.folders.length === 0}
+              disabled={actionPending || watcher.folders.length === 0}
               onClick={() => void stopWatching()}
             >
               Stop watching
@@ -122,6 +166,7 @@ function Workspace(): React.JSX.Element {
                   <button
                     className="btn btn-ghost btn-xs"
                     type="button"
+                    disabled={actionPending}
                     aria-label={`Stop watching ${folder}`}
                     onClick={() => void removeFolder(folder)}
                   >
@@ -138,7 +183,9 @@ function Workspace(): React.JSX.Element {
           )}
         </section>
 
+        <IndexStatusPanel />
         <FilterableFileView watcherPhase={watcher.phase} />
+        <ChatPanel />
       </div>
     </main>
   )

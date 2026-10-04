@@ -1,3 +1,10 @@
-allowBuilds:
-  electron-winstaller: set this to true or false
-  esbuild: set this to true or false
+shamefullyHoist: true
+onlyBuiltDependencies:
+  - electron
+  - electron-winstaller
+  - esbuild
+ignoredBuiltDependencies:
+  - tesseract.js
+peerDependencyRules:
+  allowedVersions:
+    electron-vite>vite: '8'

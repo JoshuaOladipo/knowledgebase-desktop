@@ -8,6 +8,7 @@ export interface FilesContextValue {
   selectedPaths: Set<string>
   detailsFile: FileEntry | null
   setFiles: React.Dispatch<React.SetStateAction<FileEntry[]>>
+  resetFiles: () => void
   setQuery: (query: string) => void
   toggleSelected: (path: string) => void
   toggleAll: () => void

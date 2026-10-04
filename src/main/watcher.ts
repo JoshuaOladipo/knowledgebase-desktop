@@ -83,20 +83,32 @@ export class WatcherService {
     const watcher = chokidar.watch(validatedFolders, {
       persistent: true,
       ignoreInitial: false,
+      followSymlinks: false,
       depth: 99
     })
     this.watcher = watcher
+    const pendingInitialEntries = new Set<Promise<void>>()
+    let readyReceived = false
+    const scheduleEntry = (type: 'add' | 'change', path: string): void => {
+      const pending = this.emitEntry(type, path, generation)
+      if (!readyReceived) pendingInitialEntries.add(pending)
+      void pending.finally(() => pendingInitialEntries.delete(pending))
+    }
 
     watcher
-      .on('add', (path) => void this.emitEntry('add', path, generation))
-      .on('addDir', (path) => void this.emitEntry('add', path, generation))
-      .on('change', (path) => void this.emitEntry('change', path, generation))
+      .on('add', (path) => scheduleEntry('add', path))
+      .on('addDir', (path) => scheduleEntry('add', path))
+      .on('change', (path) => scheduleEntry('change', path))
       .on('unlink', (path) => this.emitRemoval(path, generation))
       .on('unlinkDir', (path) => this.emitRemoval(path, generation))
       .on('ready', () => {
-        if (generation === this.generation) {
-          this.updateState({ folders: validatedFolders, phase: 'watching' })
-        }
+        readyReceived = true
+        const initialEntries = [...pendingInitialEntries]
+        void Promise.allSettled(initialEntries).then(() => {
+          if (generation === this.generation) {
+            this.updateState({ folders: validatedFolders, phase: 'watching' })
+          }
+        })
       })
       .on('error', (error) => {
         if (generation === this.generation) {
@@ -116,6 +128,13 @@ export class WatcherService {
     return this.getState()
   }
 
+  /** Stops native watching for process shutdown without removing the configured logical roots. */
+  async shutdown(): Promise<void> {
+    ++this.generation
+    await this.closeWatcher()
+    this.files.clear()
+  }
+
   /** Detaches and closes the underlying Chokidar watcher when present. */
   private async closeWatcher(): Promise<void> {
     const watcher = this.watcher
@@ -131,9 +150,11 @@ export class WatcherService {
         this.files.set(path, entry)
         this.onFileEvent({ type, path, entry })
       }
-    } catch (error) {
+    } catch {
       if (generation === this.generation) {
-        this.updateState({ ...this.state, phase: 'error', error: String(error) })
+        // A path commonly disappears between an event and metadata lookup. Treat that as removal;
+        // watcher-level errors still flow through Chokidar's dedicated error event.
+        this.emitRemoval(path, generation)
       }
     }
   }

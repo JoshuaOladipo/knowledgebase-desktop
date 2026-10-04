@@ -4,7 +4,8 @@ import { useFiles } from './useFiles'
 /** Renders filtered files as an accessible selectable metadata table. */
 function RowTable(): React.JSX.Element {
   const { filteredFiles, selectedPaths, setDetailsFile, toggleAll, toggleSelected } = useFiles()
-  const allSelected = filteredFiles.every((file) => selectedPaths.has(file.path))
+  const allSelected =
+    filteredFiles.length > 0 && filteredFiles.every((file) => selectedPaths.has(file.path))
 
   return (
     <div className="mt-4 overflow-x-auto">
