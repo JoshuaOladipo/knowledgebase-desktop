@@ -71,7 +71,18 @@ describe('LocalServerGenerationProvider', () => {
     expect(JSON.parse(String(receivedInit?.body))).toMatchObject({
       model: 'local-model',
       stream: false,
-      max_tokens: 512
+      max_tokens: 512,
+      response_format: {
+        type: 'json_schema',
+        json_schema: {
+          name: 'pc_agent_answer',
+          strict: true,
+          schema: {
+            required: ['answer', 'citations'],
+            additionalProperties: false
+          }
+        }
+      }
     })
   })
 
@@ -87,7 +98,7 @@ describe('LocalServerGenerationProvider', () => {
     )
     await expect(
       malformed.generate({ systemInstruction: 'System', prompt: 'Prompt', allowedSourceIds: [] })
-    ).rejects.toMatchObject({ unavailable: true })
+    ).rejects.toMatchObject({ invalidResponse: true })
 
     const oversized = new LocalServerGenerationProvider(
       settings,

@@ -25,14 +25,15 @@ export function createChatMessage(
   role: ChatMessage['role'],
   content: string,
   citations: ChatMessage['citations'] = [],
+  grounding: ChatMessage['grounding'] = null,
   id: string = crypto.randomUUID(),
   createdAt: string = new Date().toISOString()
 ): ChatMessage {
-  return { id, role, content, citations, createdAt }
+  return { id, role, content, citations, grounding, createdAt }
 }
 
 export function messageForAnswer(answer: ChatAnswer, id?: string, createdAt?: string): ChatMessage {
   return answer.kind === 'answer'
-    ? createChatMessage('assistant', answer.text, answer.citations, id, createdAt)
-    : createChatMessage('assistant', answer.reason, [], id, createdAt)
+    ? createChatMessage('assistant', answer.text, answer.citations, answer.grounding, id, createdAt)
+    : createChatMessage('assistant', answer.reason, [], null, id, createdAt)
 }

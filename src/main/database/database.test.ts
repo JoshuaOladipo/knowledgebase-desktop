@@ -66,7 +66,8 @@ describe('knowledge-base database', () => {
     expect(await database.all('SELECT version FROM schema_migrations')).toEqual([
       { version: 1 },
       { version: 2 },
-      { version: 3 }
+      { version: 3 },
+      { version: 4 }
     ])
     const columns = (await database.all('PRAGMA table_info(chunks)')) as Array<{ name: string }>
     expect(columns.map(({ name }) => name)).toEqual(
@@ -82,7 +83,8 @@ describe('knowledge-base database', () => {
     expect(await reopenedDatabase.all('SELECT version FROM schema_migrations')).toEqual([
       { version: 1 },
       { version: 2 },
-      { version: 3 }
+      { version: 3 },
+      { version: 4 }
     ])
     await reopened.close()
   })
@@ -174,6 +176,37 @@ describe('knowledge-base database', () => {
     await expect(
       chunks.replaceDocument(document, [{ ...chunk(), embeddingDimensions: 4 }])
     ).rejects.toThrow('invalid embedding')
+    await service.close()
+  })
+
+  it('backfills legacy assistant messages as document-grounded', async () => {
+    const folder = await mkdtemp(join(tmpdir(), 'pc-agent-db-v3-'))
+    temporaryFolders.push(folder)
+    const path = join(folder, 'knowledge-base.db')
+    const legacy = await connect(path)
+    await legacy.exec(`
+      CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
+      INSERT INTO schema_migrations VALUES
+        (1, '2026-01-01'), (2, '2026-01-01'), (3, '2026-01-01');
+      CREATE TABLE messages(
+        id TEXT PRIMARY KEY,
+        conversation_id TEXT NOT NULL,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      INSERT INTO messages VALUES
+        ('user', 'conversation', 'user', 'Question', '2026-01-01'),
+        ('assistant', 'conversation', 'assistant', 'Answer', '2026-01-01');
+    `)
+    await legacy.close()
+
+    const service = new DatabaseService(path)
+    const database = await service.open()
+    expect(await database.all('SELECT id, grounding FROM messages ORDER BY id')).toEqual([
+      { id: 'assistant', grounding: 'documents' },
+      { id: 'user', grounding: null }
+    ])
     await service.close()
   })
 

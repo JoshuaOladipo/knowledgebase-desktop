@@ -19,5 +19,11 @@ Current active records:
 
 Completed records:
 
+- `generation-json-compatibility.md`: enforced local-model JSON output and accurate invalid-response
+  classification.
+- `generation-schema-enforcement.md`: strict answer/citations schema enforcement for local model
+  responses.
 - `immediate-defect-remediation.md`: shutdown durability, bounded status polling, mutation-error
   reporting, and status-documentation corrections.
+- `ungrounded-chat-fallback.md`: citation-free model fallback, durable grounding classification, and
+  explicit ungrounded-answer presentation.

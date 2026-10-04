@@ -46,6 +46,7 @@ describe('GroundedAnswerService', () => {
     await expect(service.answer({ question: 'What is the fact?' })).resolves.toEqual({
       kind: 'answer',
       text: 'The answer is forty-two.',
+      grounding: 'documents',
       citations: [
         expect.objectContaining({
           sourceId: 'chunk-1',
@@ -64,22 +65,47 @@ describe('GroundedAnswerService', () => {
     )
   })
 
-  it('does not invoke generation when evidence is insufficient', async () => {
+  it.each([
+    { name: 'no candidates', candidates: [], evidence: undefined },
+    {
+      name: 'candidates below relevance',
+      candidates: [{ ...evidence, distance: 0.8 }],
+      evidence: undefined
+    },
+    {
+      name: 'evidence exceeding the context budget',
+      candidates: [evidence],
+      evidence: { contextTokenBudget: 1 }
+    }
+  ])('generates an ungrounded answer for $name', async ({ candidates, evidence: options }) => {
+    const generate = vi.fn(async () => ({
+      text: 'A general-knowledge answer.',
+      citedSourceIds: ['invented-source']
+    }))
     const generation: GenerationProvider = {
       id: 'fake',
       model: 'fake-v1',
-      generate: vi.fn()
+      generate
     }
     const service = new GroundedAnswerService(
       embeddingProvider(),
-      { retrieve: vi.fn(async () => []) },
+      { retrieve: vi.fn(async () => candidates) },
       generation
     )
-    await expect(service.answer({ question: 'Unknown?' })).resolves.toEqual({
-      kind: 'insufficient-context',
-      reason: 'no-candidates'
+    await expect(service.answer({ question: 'Unknown?', evidence: options })).resolves.toEqual({
+      kind: 'answer',
+      text: 'A general-knowledge answer.',
+      citations: [],
+      grounding: 'model'
     })
-    expect(generation.generate).not.toHaveBeenCalled()
+    expect(generate).toHaveBeenCalledWith(
+      {
+        systemInstruction: expect.stringContaining('general model knowledge'),
+        prompt: 'Unknown?',
+        allowedSourceIds: []
+      },
+      undefined
+    )
   })
 
   it('classifies provider errors without preserving sensitive provider messages', async () => {
@@ -109,6 +135,11 @@ describe('GroundedAnswerService', () => {
     {
       failure: Object.assign(new Error('offline secret'), { unavailable: true }),
       category: 'unavailable'
+    },
+    { failure: new TypeError('network secret'), category: 'unavailable' },
+    {
+      failure: Object.assign(new Error('malformed secret'), { invalidResponse: true }),
+      category: 'invalid-response'
     }
   ] as const)('classifies $category provider failures safely', async ({ failure, category }) => {
     const service = new GroundedAnswerService(

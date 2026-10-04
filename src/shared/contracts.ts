@@ -41,9 +41,11 @@ export interface ChatCitation {
   excerpt: string
 }
 
+export type AnswerGrounding = 'documents' | 'model'
+
 export type ChatAnswer =
   | { kind: 'insufficient-context'; reason: string }
-  | { kind: 'answer'; text: string; citations: ChatCitation[] }
+  | { kind: 'answer'; text: string; citations: ChatCitation[]; grounding: AnswerGrounding }
 
 export interface ConversationSummary {
   id: string
@@ -57,6 +59,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
   citations: ChatCitation[]
+  grounding: AnswerGrounding | null
   createdAt: string
 }
 

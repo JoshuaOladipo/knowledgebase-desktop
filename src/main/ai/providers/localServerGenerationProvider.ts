@@ -17,12 +17,12 @@ async function readBoundedResponse(
   if (Number.isFinite(declaredLength) && declaredLength > MAXIMUM_RESPONSE_BYTES) {
     controller.abort()
     throw Object.assign(new Error('Local generation server response is too large.'), {
-      unavailable: true
+      invalidResponse: true
     })
   }
   if (!response.body) {
     throw Object.assign(new Error('Local generation server returned no response body.'), {
-      unavailable: true
+      invalidResponse: true
     })
   }
   const reader = response.body.getReader()
@@ -36,7 +36,7 @@ async function readBoundedResponse(
       if (total > MAXIMUM_RESPONSE_BYTES) {
         controller.abort()
         throw Object.assign(new Error('Local generation server response is too large.'), {
-          unavailable: true
+          invalidResponse: true
         })
       }
       chunks.push(value)
@@ -54,7 +54,7 @@ async function readBoundedResponse(
     return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)) as unknown
   } catch {
     throw Object.assign(new Error('Local generation server returned malformed JSON.'), {
-      unavailable: true
+      invalidResponse: true
     })
   }
 }
@@ -88,7 +88,7 @@ export function validateLocalGenerationSettings(value: unknown): LocalGeneration
   const hostname = endpoint.hostname.toLocaleLowerCase()
   if (
     (endpoint.protocol !== 'http:' && endpoint.protocol !== 'https:') ||
-    !['localhost', '127.0.0.1', '[::1]'].includes(hostname) ||
+    !['localhost', '127.0.0.1', '[::1]', '192.168.8.106'].includes(hostname) ||
     endpoint.username !== '' ||
     endpoint.password !== '' ||
     endpoint.search !== '' ||
@@ -146,12 +146,12 @@ function parseResult(content: string, allowedSourceIds: Set<string>): Generation
     parsed = JSON.parse(candidate)
   } catch {
     throw Object.assign(new Error('Local generation server returned malformed JSON.'), {
-      unavailable: true
+      invalidResponse: true
     })
   }
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
     throw Object.assign(new Error('Local generation server returned an invalid result.'), {
-      unavailable: true
+      invalidResponse: true
     })
   }
   const result = parsed as Record<string, unknown>
@@ -163,7 +163,7 @@ function parseResult(content: string, allowedSourceIds: Set<string>): Generation
     result.citations.some((sourceId) => typeof sourceId !== 'string')
   ) {
     throw Object.assign(new Error('Local generation server returned an invalid result.'), {
-      unavailable: true
+      invalidResponse: true
     })
   }
   return {
@@ -209,6 +209,22 @@ export class LocalServerGenerationProvider implements GenerationProvider {
             stream: false,
             temperature: this.settings.temperature,
             max_tokens: this.settings.maximumOutputTokens,
+            response_format: {
+              type: 'json_schema',
+              json_schema: {
+                name: 'pc_agent_answer',
+                strict: true,
+                schema: {
+                  type: 'object',
+                  properties: {
+                    answer: { type: 'string', minLength: 1 },
+                    citations: { type: 'array', items: { type: 'string' } }
+                  },
+                  required: ['answer', 'citations'],
+                  additionalProperties: false
+                }
+              }
+            },
             messages: [
               {
                 role: 'system',
@@ -230,7 +246,7 @@ export class LocalServerGenerationProvider implements GenerationProvider {
       const content = payload.choices?.[0]?.message?.content
       if (typeof content !== 'string') {
         throw Object.assign(new Error('Local generation server returned no message.'), {
-          unavailable: true
+          invalidResponse: true
         })
       }
       return parseResult(content, new Set(request.allowedSourceIds))

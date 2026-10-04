@@ -10,11 +10,13 @@ foundations of the RAG system:
 - Local file policy, extraction, chunking, and ingestion reconciliation.
 - Deterministic local embeddings stored as Turso vectors.
 - Text, Markdown, DOCX, PPTX, XLSX, ODT, ODP, ODS, PDF, RTF, and EPUB extraction.
-- Exact compatible-vector retrieval, bounded evidence selection, and insufficient-context results.
-- Provider-neutral grounded generation orchestration with structured citations.
+- Exact compatible-vector retrieval and bounded evidence selection.
+- Provider-neutral generation with structured citations for document-grounded answers and an
+  explicitly labeled model-knowledge fallback when no usable evidence remains.
 - A loopback-only OpenAI-compatible generation provider with persistent bounded settings.
-- Typed ask, cancel, settings, conversation read/list/delete IPC and a grounded chat UI.
-- Durable conversations, messages, and immutable citation snapshots retained until explicit deletion.
+- Typed ask, cancel, settings, conversation read/list/delete IPC and a chat UI that displays grounding.
+- Durable conversations, messages, grounding classifications, and immutable citation snapshots
+  retained until explicit deletion.
 
 Index-state/re-index/reveal IPC, the indexing UI, and local retrieval benchmarks are implemented.
 Broader installed-package and cross-platform verification remains planned.
@@ -24,7 +26,8 @@ Broader installed-package and cross-platform verification remains planned.
 1. Incrementally index supported files from user-selected folders.
 2. Avoid repeat work when content and ingestion configuration are unchanged.
 3. Retrieve relevant chunks using Turso vector distance.
-4. Generate answers grounded in retrieved evidence.
+4. Generate answers grounded in retrieved evidence when available, with a clearly identified
+   model-knowledge fallback otherwise.
 5. Return structured, reproducible citations.
 6. Preserve the sandboxed Electron boundary and local-first defaults.
 7. Keep extraction, embedding, retrieval, and generation implementations replaceable.
@@ -39,7 +42,8 @@ Broader installed-package and cross-platform verification remains planned.
   secure credential storage.
 - Exact cosine-distance retrieval is acceptable initially but must be benchmarked as the index grows.
 - Retrieved content is untrusted evidence and may contain prompt-injection instructions.
-- Returning “insufficient relevant information” is preferable to an unsupported answer.
+- Answers without relevant indexed evidence must be identified as ungrounded and must not claim to
+  come from the user's files.
 
 ## Process and trust boundaries
 
@@ -154,8 +158,9 @@ fingerprints, indexing status, sanitized failure information, and timestamps.
 `chunks` stores document ownership, stable order, normalized content, token estimate, offsets,
 heading/source metadata, embedding bytes, provider/model identity, dimensions, and creation time.
 
-`conversations` and `messages` retain local history until explicit deletion. `message_citations` stores
-immutable evidence snapshots so citation history does not change when a source is later re-indexed.
+`conversations` and `messages` retain local history and each assistant message's grounding
+classification until explicit deletion. `message_citations` stores immutable evidence snapshots so
+citation history does not change when a source is later re-indexed.
 
 ## Retrieval and answer flow
 
@@ -165,14 +170,18 @@ immutable evidence snapshots so citation history does not change when a source i
 4. Apply root/document filters in SQL and reject results beyond a configurable threshold.
 5. Remove duplicate and heavily overlapping adjacent chunks.
 6. Select evidence within a conservative context-token budget.
-7. Return an insufficient-context result when no suitable evidence remains.
-8. Delimit and label untrusted evidence in a grounded prompt.
+7. When suitable evidence remains, delimit and label it as untrusted data in a grounded prompt.
+8. Otherwise, request a general model-knowledge answer with citations disabled.
 9. Invoke a provider-neutral `GenerationProvider`.
-10. Atomically persist the answer and exact evidence, then return structured citations.
+10. Atomically persist the answer, grounding classification, and exact evidence; return structured
+    citations only for evidence-backed answers.
 
 Steps 1–10 are composed at runtime with the approved user-managed local server provider. Generation
 is disabled by default and can only target HTTP(S) on `localhost`, `127.0.0.1`, or `[::1]`. Requests
 are non-streaming, bounded, cancellable, credential-free, and reject redirects.
+The provider requests a strict JSON schema requiring an answer and citation array, validates the
+returned shape again locally, and reports invalid responses separately from server availability
+failures.
 
 Retrieval remains behind an interface so hybrid lexical search, reranking, or approximate vector
 indexes can be introduced without changing the renderer contract.
@@ -236,7 +245,7 @@ ADR-001, ADR-002, ADR-003, and ADR-004 were explicitly approved on 2026-10-03.
 | Stale generation reaches commit            | Reject the mutation inside the serialized commit       |
 | Extraction or embedding failure            | Keep the prior valid index and store a sanitized error |
 | Vector dimension mismatch                  | Reject the replacement                                 |
-| No relevant retrieval result               | Return insufficient context                            |
+| No relevant retrieval result               | Generate and clearly label an ungrounded model answer  |
 | Migration failure                          | Do not start indexing; show a startup error            |
 | Shutdown during work                       | Abort or drain without committing a partial document   |
 | Normal application shutdown                | Preserve durable documents/chunks and configured roots |

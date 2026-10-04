@@ -1,6 +1,7 @@
 import type { Database, Transaction } from '@tursodatabase/database'
 import { randomUUID } from 'node:crypto'
 import type { GroundedCitation } from '../ai/groundedAnswerService'
+import type { AnswerGrounding } from '../../shared/contracts'
 
 export interface ConversationRecord {
   id: string
@@ -15,6 +16,7 @@ export interface MessageRecord {
   role: 'user' | 'assistant'
   content: string
   citations: GroundedCitation[]
+  grounding: AnswerGrounding | null
   createdAt: string
 }
 
@@ -66,7 +68,7 @@ export class ConversationRepository {
 
   async listMessages(conversationId: string): Promise<MessageRecord[]> {
     const rows = (await this.database.all(
-      `SELECT id, conversation_id, role, content, created_at
+      `SELECT id, conversation_id, role, content, grounding, created_at
        FROM messages WHERE conversation_id = ? ORDER BY created_at ASC, rowid ASC`,
       conversationId
     )) as Array<Record<string, unknown>>
@@ -83,6 +85,8 @@ export class ConversationRepository {
         conversationId: String(row.conversation_id),
         role: String(row.role) as MessageRecord['role'],
         content: String(row.content),
+        grounding:
+          row.grounding === 'documents' || row.grounding === 'model' ? row.grounding : null,
         createdAt: String(row.created_at),
         citations: citations.map((citation) => ({
           sourceId: String(citation.source_id),
@@ -106,7 +110,8 @@ export class ConversationRepository {
     conversationId: string,
     question: string,
     answer: string,
-    citations: GroundedCitation[]
+    citations: GroundedCitation[],
+    grounding: AnswerGrounding
   ): Promise<void> {
     const userContent = validateText(question, 'Question', 10_000)
     const answerContent = validateText(answer, 'Answer', 100_000)
@@ -120,19 +125,23 @@ export class ConversationRepository {
       const userMessageId = randomUUID()
       const answerMessageId = randomUUID()
       await transaction.run(
-        'INSERT INTO messages(id, conversation_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)',
+        `INSERT INTO messages(id, conversation_id, role, content, grounding, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
         userMessageId,
         conversationId,
         'user',
         userContent,
+        null,
         now
       )
       await transaction.run(
-        'INSERT INTO messages(id, conversation_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)',
+        `INSERT INTO messages(id, conversation_id, role, content, grounding, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
         answerMessageId,
         conversationId,
         'assistant',
         answerContent,
+        grounding,
         now
       )
       for (const [ordinal, citation] of citations.entries()) {

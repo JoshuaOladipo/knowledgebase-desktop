@@ -16,7 +16,13 @@ export interface GenerationProvider {
 }
 
 export type GenerationErrorCategory =
-  'cancelled' | 'authentication' | 'rate-limit' | 'transient' | 'unavailable' | 'unknown'
+  | 'cancelled'
+  | 'authentication'
+  | 'rate-limit'
+  | 'transient'
+  | 'unavailable'
+  | 'invalid-response'
+  | 'unknown'
 
 export class GenerationError extends Error {
   constructor(readonly category: GenerationErrorCategory) {
@@ -37,8 +43,12 @@ export function classifyGenerationError(error: unknown, signal?: AbortSignal): G
   if (status === 401 || status === 403) return new GenerationError('authentication')
   if (status === 429) return new GenerationError('rate-limit')
   if (status !== undefined && status >= 500) return new GenerationError('transient')
+  if (typeof error === 'object' && error !== null && 'invalidResponse' in error) {
+    return new GenerationError('invalid-response')
+  }
   if (typeof error === 'object' && error !== null && 'unavailable' in error) {
     return new GenerationError('unavailable')
   }
+  if (error instanceof TypeError) return new GenerationError('unavailable')
   return new GenerationError('unknown')
 }

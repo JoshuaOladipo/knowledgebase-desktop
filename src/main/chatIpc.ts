@@ -139,14 +139,16 @@ export function registerChatIpcHandlers(
         conversation.id,
         request.question,
         answer.text,
-        answer.citations
+        answer.citations,
+        answer.grounding
       )
       return {
         conversationId: conversation.id,
         answer: {
           kind: 'answer',
           text: answer.text,
-          citations: answer.citations.map(publicCitation)
+          citations: answer.citations.map(publicCitation),
+          grounding: answer.grounding
         }
       }
     } finally {
@@ -182,6 +184,7 @@ export function registerChatIpcHandlers(
           role: message.role,
           content: message.content,
           citations: message.citations.map(publicCitation),
+          grounding: message.grounding,
           createdAt: message.createdAt
         }))
       }

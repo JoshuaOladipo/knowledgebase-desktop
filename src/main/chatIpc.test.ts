@@ -58,6 +58,7 @@ describe('chat IPC', () => {
           answer: async () => ({
             kind: 'answer',
             text: 'Grounded answer',
+            grounding: 'documents',
             citations: [
               {
                 sourceId: 'source-1',
@@ -87,6 +88,7 @@ describe('chat IPC', () => {
       answer: {
         kind: 'answer',
         text: 'Grounded answer',
+        grounding: 'documents',
         citations: [{ sourceId: 'source-1', documentName: 'note.txt' }]
       }
     })
@@ -100,6 +102,7 @@ describe('chat IPC', () => {
         {
           role: 'assistant',
           content: 'Grounded answer',
+          grounding: 'documents',
           citations: [{ excerpt: 'Evidence snapshot' }]
         }
       ]

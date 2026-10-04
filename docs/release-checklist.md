@@ -44,7 +44,7 @@ For every supported operating system:
 - [ ] Parse representative text, Markdown, Office, OpenDocument, PDF, RTF, and EPUB fixtures.
 - [ ] Confirm parser and PDF runtime assets work from the packaged ASAR layout.
 - [ ] Confirm indexing cancellation and graceful shutdown leave no partial document replacement.
-- [ ] When RAG ships, verify retrieval, insufficient-context behavior, cancellation, and citations.
+- [ ] Verify grounded retrieval/citations, labeled ungrounded fallback, and cancellation.
 
 ## Native dependency checks
 

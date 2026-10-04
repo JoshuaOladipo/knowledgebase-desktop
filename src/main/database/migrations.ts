@@ -94,6 +94,13 @@ const migrations: Migration[] = [
       CREATE INDEX messages_conversation_idx ON messages(conversation_id, created_at);
       CREATE INDEX message_citations_message_idx ON message_citations(message_id, ordinal);
     `
+  },
+  {
+    version: 4,
+    sql: `
+      ALTER TABLE messages ADD COLUMN grounding TEXT CHECK(grounding IN ('documents', 'model'));
+      UPDATE messages SET grounding = 'documents' WHERE role = 'assistant';
+    `
   }
 ]
 

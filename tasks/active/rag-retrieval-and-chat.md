@@ -11,7 +11,7 @@ generation, structured citations, conversation persistence, typed IPC, and an ac
 
 - [x] Retrieve compatible indexed chunks using exact Turso cosine distance and validated filters.
 - [x] Bound, deduplicate, and diversify evidence within a configured context budget.
-- [x] Return insufficient context rather than force an unsupported answer.
+- [x] Classify insufficient evidence and use an explicitly labeled model-knowledge fallback.
 - [x] Generate answers through a provider-neutral interface using delimited untrusted evidence.
 - [x] Return and persist structured citations derived from actual retrieved chunks.
 - [x] Expose validated chat operations through preload without privileged primitives.
@@ -136,7 +136,7 @@ Acceptance criteria:
 
 - [x] Define a cancellable provider-neutral `GenerationProvider`.
 - [x] Delimit evidence and require supplied source identifiers in the prompt.
-- [x] Do not invoke generation when evidence is insufficient.
+- [x] Invoke a citation-free model-knowledge fallback when evidence is insufficient.
 - [x] Map citations from retrieval records rather than trusting model markup.
 - [x] Classify provider errors without logging prompts, source text, answers, or credentials.
 
@@ -152,15 +152,16 @@ Implementation:
 
 - `src/main/ai/generationProvider.ts` defines the cancellable provider contract and content-free error
   categories.
-- `GroundedAnswerService` at `src/main/ai/groundedAnswerService.ts:64-114` embeds, retrieves, selects,
-  delimits untrusted evidence, invokes generation, and maps only actual source records.
+- `GroundedAnswerService` embeds, retrieves, selects, delimits untrusted evidence for grounded
+  answers, falls back to explicitly classified general model knowledge, and maps only actual source
+  records.
 - `LocalServerGenerationProvider` validates a loopback-only, credential-free OpenAI-compatible
   endpoint and performs bounded, cancellable, non-streaming chat-completion requests.
 
 Tests:
 
 - `src/main/ai/groundedAnswerService.test.ts` uses fake providers to cover prompt injection text,
-  invented citations, insufficient context, and sanitized provider failures.
+  invented citations, all insufficient-evidence fallback paths, and sanitized provider failures.
 
 Verification:
 
@@ -188,6 +189,7 @@ Acceptance criteria:
       re-indexing.
 - [x] Define deletion and retention behavior.
 - [x] Preserve atomicity between a persisted answer and its citations.
+- [x] Persist whether assistant answers are grounded in documents or model knowledge.
 
 Expected verification:
 
@@ -199,15 +201,15 @@ Architecture impact:
 
 Implementation:
 
-- Migration 3 at `src/main/database/migrations.ts:59-97` adds conversations, messages, and immutable
-  citation snapshots.
-- `ConversationRepository` at `src/main/database/conversationRepository.ts:38-172` retains history
-  locally until explicit deletion, atomically appends exchanges/citations, and cascades deletion.
+- Migration 3 adds conversations, messages, and immutable citation snapshots; migration 4 adds and
+  backfills durable assistant-message grounding.
+- `ConversationRepository` retains history locally until explicit deletion, atomically appends
+  exchanges, grounding, and citations, and cascades deletion.
 
 Tests:
 
-- `src/main/database/conversationRepository.test.ts` covers restart persistence, immutable evidence,
-  transactional rollback, and cascade deletion.
+- `src/main/database/conversationRepository.test.ts` covers restart persistence, grounded and model
+  classifications, immutable evidence, transactional rollback, and cascade deletion.
 
 Verification:
 
@@ -263,7 +265,7 @@ Tests:
 
 Verification:
 
-- Included in the 100-test suite; typecheck and lint pass.
+- Included in the 107-test suite; typecheck and lint pass.
 
 Commit:
 
@@ -284,7 +286,8 @@ Acceptance criteria:
 
 - [x] Show global and per-document indexing states and retry/re-index actions.
 - [x] Add accessible question submission, cancellation, loading, empty, and failure states.
-- [x] Display structured source excerpts and metadata separately from answer markup.
+- [x] Display structured source excerpts separately and visibly mark model-knowledge answers as
+      ungrounded.
 - [x] Reveal a cited file only through a validated main-process operation.
 - [x] Add renderer tests for state transitions, cancellation, insufficient context, and citations.
 
@@ -299,7 +302,8 @@ Architecture impact:
 Implementation:
 
 - `ChatPanel` configures the local server, submits/cancels questions, loads/deletes retained
-  conversations, and renders answer text and citation snapshots as separate content.
+  conversations, renders answer text and citation snapshots separately, and displays a durable
+  warning on ungrounded answers.
 - `IndexStatusPanel` polls bounded index snapshots, displays queue/document stages and failures,
   supports retry/re-index, and presents privacy-safe timing/storage diagnostics.
 - Aggregate status covers the complete index while per-document IPC results are capped at the 200 most
@@ -308,14 +312,14 @@ Implementation:
 
 Tests:
 
-- `chatPresentation.test.ts` covers answering/cancelling/completion, insufficient context, and
-  structured citation presentation.
+- `chatPresentation.test.ts` covers answering/cancelling/completion, grounding classification, and
+  structured citation presentation. `ChatPanel.test.tsx` verifies the visible ungrounded warning.
 - `indexPresentation.test.ts` covers queue/stage activity and terminal-state presentation.
 - `IndexStatusPanel.test.tsx` proves a pending status request prevents another poll from starting.
 
 Verification:
 
-- Included in the 100-test suite; renderer typecheck and lint pass.
+- Included in the 107-test suite; renderer typecheck and lint pass.
 
 Commit:
 
@@ -384,7 +388,8 @@ Commit:
 - Implemented: Retrieval, evidence selection, grounded local generation, conversation persistence,
   typed chat/index IPC, cancellation, local settings, chat/index status UI, validated citation
   reveal, and privacy-safe diagnostics.
-- Verified: The 100-test suite, typecheck, lint, production build, and project validation pass.
+- Verified: The 107-test suite, typecheck, lint, and production build pass; the previously recorded
+  project validation result remains unchanged.
 - Remaining: Provider/end-to-end packaged measurements and broader packaged verification.
 - Risks/blockers: Encryption policy, representative evaluation data, and cross-platform runners.
 - Next action: Run packaged end-to-end scenarios on supported platform runners.

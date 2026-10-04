@@ -90,6 +90,7 @@ describe('local RAG journey', () => {
     })
     expect(answer).toMatchObject({
       kind: 'answer',
+      grounding: 'documents',
       citations: [{ documentPath: path, documentName: 'knowledge.md' }]
     })
     if (answer.kind !== 'answer') throw new Error('Expected a grounded answer.')
@@ -100,7 +101,8 @@ describe('local RAG journey', () => {
       conversation.id,
       'What is the current launch phrase?',
       answer.text,
-      answer.citations
+      answer.citations,
+      answer.grounding
     )
 
     await writeFile(path, '# Launch\n\nThe current launch phrase is violet river beta.')
@@ -125,7 +127,12 @@ describe('local RAG journey', () => {
         watchedRoots: [root],
         evidence: { maximumDistance: 2 }
       })
-    ).resolves.toEqual({ kind: 'insufficient-context', reason: 'no-candidates' })
+    ).resolves.toEqual({
+      kind: 'answer',
+      text: 'The current launch phrase is grounded in the indexed file.',
+      citations: [],
+      grounding: 'model'
+    })
     await restartedCoordinator.close()
     await restartedService.close()
 

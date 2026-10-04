@@ -39,7 +39,8 @@ describe('ConversationRepository', () => {
       conversation.id,
       'What is preserved?',
       'The evidence snapshot.',
-      [citation]
+      [citation],
+      'documents'
     )
     await service.close()
 
@@ -47,10 +48,16 @@ describe('ConversationRepository', () => {
     const persisted = new ConversationRepository(await reopened.open())
     expect(await persisted.list()).toEqual([expect.objectContaining({ id: conversation.id })])
     expect(await persisted.listMessages(conversation.id)).toEqual([
-      expect.objectContaining({ role: 'user', content: 'What is preserved?', citations: [] }),
+      expect.objectContaining({
+        role: 'user',
+        content: 'What is preserved?',
+        citations: [],
+        grounding: null
+      }),
       expect.objectContaining({
         role: 'assistant',
         content: 'The evidence snapshot.',
+        grounding: 'documents',
         citations: [citation]
       })
     ])
@@ -69,7 +76,7 @@ describe('ConversationRepository', () => {
       BEGIN SELECT RAISE(ABORT, 'citation failure'); END;
     `)
     await expect(
-      repository.appendExchange(conversation.id, 'Question', 'Answer', [citation])
+      repository.appendExchange(conversation.id, 'Question', 'Answer', [citation], 'documents')
     ).rejects.toThrow()
     expect(await repository.listMessages(conversation.id)).toEqual([])
     await service.close()
@@ -82,13 +89,33 @@ describe('ConversationRepository', () => {
     const database = await service.open()
     const repository = new ConversationRepository(database)
     const conversation = await repository.create('Delete me')
-    await repository.appendExchange(conversation.id, 'Question', 'Answer', [citation])
+    await repository.appendExchange(conversation.id, 'Question', 'Answer', [citation], 'documents')
     await repository.delete(conversation.id)
     expect(await repository.get(conversation.id)).toBeNull()
     expect(await database.get('SELECT count(*) AS count FROM messages')).toEqual({ count: 0 })
     expect(await database.get('SELECT count(*) AS count FROM message_citations')).toEqual({
       count: 0
     })
+    await service.close()
+  })
+
+  it('persists model grounding without citations', async () => {
+    const folder = await mkdtemp(join(tmpdir(), 'pc-agent-conversation-model-'))
+    temporaryFolders.push(folder)
+    const service = new DatabaseService(join(folder, 'knowledge.db'))
+    const repository = new ConversationRepository(await service.open())
+    const conversation = await repository.create('General knowledge')
+    await repository.appendExchange(
+      conversation.id,
+      'Unknown in my files?',
+      'A model-knowledge answer.',
+      [],
+      'model'
+    )
+    expect(await repository.listMessages(conversation.id)).toEqual([
+      expect.objectContaining({ role: 'user', grounding: null }),
+      expect.objectContaining({ role: 'assistant', grounding: 'model', citations: [] })
+    ])
     await service.close()
   })
 })

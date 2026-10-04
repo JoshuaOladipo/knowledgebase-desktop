@@ -140,7 +140,8 @@ export default function ChatPanel(): React.JSX.Element {
             Ask your files
           </h2>
           <p className="text-sm text-base-content/60">
-            Answers use indexed evidence and your user-managed local model server.
+            Answers use indexed evidence when relevant, otherwise your local model’s general
+            knowledge.
           </p>
         </div>
         <button
@@ -308,6 +309,12 @@ export default function ChatPanel(): React.JSX.Element {
                   : 'mr-8 bg-base-100'
               }`}
             >
+              {message.role === 'assistant' && message.grounding === 'model' && (
+                <p className="alert alert-warning mb-3 py-2 text-xs" role="note">
+                  Ungrounded answer — no relevant indexed evidence was found. This response uses the
+                  model’s general knowledge.
+                </p>
+              )}
               <p className="whitespace-pre-wrap text-sm">{message.content}</p>
               {message.citations.length > 0 && (
                 <div className="mt-3 space-y-2">
